@@ -1,1 +1,1 @@
-from app_v25 import app
+from app_v26 import app
