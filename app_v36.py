@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import app_v35 as prev
 import app_v33 as playoff_ui
 import app_v19 as feature
 import app_v05 as core
 from khl_schedule_v36 import fetch_khl_with_postseason
-from postseason_adapters import calendar_label
+from playoff_monitor import build_snapshot
+from postseason_adapters import PLANS, calendar_label
+from postseason_sources import probe_playoff_page
 
 core.app.version = "0.36.0"
 
@@ -18,6 +22,35 @@ core.fetch_khl = fetch_khl_with_postseason
 # drive stage detection, so UI text and backend logic cannot drift apart.
 for _team in core.TEAMS:
     playoff_ui.PLAYOFF_CALENDAR[_team.key] = calendar_label(_team.key)
+
+# Source-specific postseason probe for the SKA family sites. The probe is used
+# only when the official playoff window has actually started; before that, the
+# calendar/qualification model remains authoritative and cannot jump early.
+def _snapshots_v36():
+    now = datetime.now(core.MOSCOW)
+    with core.LOCK:
+        games = list(core.GAMES.values())
+    out = []
+    for team in core.TEAMS:
+        try:
+            table = feature._fetch_standings(team.key)
+            plan = PLANS.get(team.key)
+            if plan and plan.playoff_start and now.date() >= plan.playoff_start and team.key in {"ska_vmf", "ska_1946", "academy"}:
+                probe = probe_playoff_page(team.key, team.name)
+                if probe.get("active"):
+                    table = dict(table)
+                    table["postseason_stage"] = "playoff"
+                    table["source"] = probe.get("url") or table.get("source")
+                    table["title"] = f"Плей-офф {team.league}"
+                    print(f"[verify] postseason source {team.key}: active {probe.get('url')}", flush=True)
+            snap = build_snapshot(team.key, team.name, team.league, table, games, now)
+            out.append((team, table, snap, None))
+        except Exception as exc:
+            out.append((team, {}, None, f"{type(exc).__name__}: {exc}"))
+    return out
+
+
+playoff_ui._snapshots = _snapshots_v36
 
 _old_team_page = feature.render_team_page
 
