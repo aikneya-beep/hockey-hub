@@ -85,6 +85,15 @@ def _has_games_since(team_name: str, games, start: date) -> bool:
     return False
 
 
+def _official_postseason_games(team_name: str, games, now: datetime):
+    return [
+        g for g in games
+        if team_name in (g.home_team, g.away_team)
+        and getattr(g, "stage_hint", None) in {"playoff", "play_in"}
+        and g.start_at <= now + timedelta(days=35)
+    ]
+
+
 def calendar_label(team_key: str) -> str:
     plan = PLANS.get(team_key)
     if not plan:
@@ -135,9 +144,25 @@ def detect_stage(
             source="table",
         )
 
+    plan = PLANS.get(team_key)
+
+    # Official KHL events carry a non-regular marker. Once the regular season is
+    # over, that is stronger evidence than a standings page that may still show
+    # the final regular table.
+    official_games = _official_postseason_games(team_name, games, now)
+    if official_games and (not plan or not plan.regular_end or now.date() > plan.regular_end):
+        first = min(g.start_at for g in official_games)
+        kind = StageKind.PLAY_IN if any(getattr(g, "stage_hint", None) == "play_in" for g in official_games) else StageKind.PLAYOFF
+        return StageDecision(
+            kind,
+            f"{'Плей-ин' if kind == StageKind.PLAY_IN else 'Плей-офф'} {league_name(team_key)}",
+            series_since=first - timedelta(hours=1),
+            wins_needed=4 if team_key in {"ska", "ska_vmf"} else 2 if kind == StageKind.PLAY_IN else None,
+            source="events",
+        )
+
     # SPbHL has no fixed common season calendar. Its tournament title is the
     # authoritative signal; absence of postseason words means a regular stage.
-    plan = PLANS.get(team_key)
     if not plan:
         return StageDecision(StageKind.REGULAR, title, source="tournament")
 
@@ -223,3 +248,8 @@ def detect_stage(
         return StageDecision(StageKind.OTHER, "Сезон завершён", source="calendar")
 
     return StageDecision(StageKind.REGULAR, title, source="calendar")
+
+
+def league_name(team_key: str) -> str:
+    plan = PLANS.get(team_key)
+    return plan.league if plan else ""
