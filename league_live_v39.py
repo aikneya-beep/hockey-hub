@@ -67,7 +67,7 @@ def _mhl_detail_pages() -> list[dict]:
         tokens = [core.compact(x) for x in soup.stripped_strings if core.compact(x)]
         text = " ".join(tokens)
 
-        number_match = re.search(r"Игра\s+номер\s+(\d+)", f"{title} {text}", re.I)
+        number_match = re.search(r"Игра\s+номер\s+(\d+)", title, re.I)
         number = number_match.group(1) if number_match else None
         home_score = away_score = None
         state_text = ""
@@ -91,12 +91,18 @@ def _mhl_detail_pages() -> list[dict]:
                 if home_score is not None:
                     break
 
-        low = _norm(text)
-        finished = any(x in low for x in ("матч завершен", "матч завершён", "окончание игры", "игра завершена"))
+        # Do not inspect the whole page for a completion phrase: every MHL text
+        # page also contains today's other games in a shared scoreboard. The
+        # state immediately following this match's #number/score belongs to the
+        # current match and is the authoritative status signal.
+        state_low = _norm(state_text)
+        finished = any(x in state_low for x in ("заверш", "окончен", "окончание игры"))
         video = None
         for a in soup.find_all("a", href=True):
             href = str(a.get("href") or "")
-            if "/media/video/" in href:
+            # The main full-game video link uses mhl.khl.ru/media/video/. Event
+            # clips use mhl.webcaster.pro and should not replace the match link.
+            if "/media/video/" in href and "mhl.khl.ru" in urljoin(detail_url, href):
                 video = urljoin(detail_url, href)
                 break
 
@@ -134,7 +140,10 @@ def overlay_mhl_live(games: list[core.Game], wanted_name: str) -> int:
         away = _norm(game.away_team)
         match = None
         for item in details:
-            hay = _norm(f"{item['title']} {item['text']}")
+            # Match on the HTML title only. The body contains a shared scoreboard
+            # with every game of the day, which would make all team names appear
+            # on every detail page.
+            hay = _norm(item["title"])
             if home in hay and away in hay:
                 match = item
                 break
@@ -150,7 +159,8 @@ def overlay_mhl_live(games: list[core.Game], wanted_name: str) -> int:
             updated += 1
             print(
                 f"[live] MHL {wanted_name}: {game.status} {game.home_team} "
-                f"{game.home_score}:{game.away_score} {game.away_team} source={game.source_url}",
+                f"{game.home_score}:{game.away_score} {game.away_team} "
+                f"state={match['state']} source={game.source_url}",
                 flush=True,
             )
         elif _near_now(game, now) and game.status == "scheduled":
