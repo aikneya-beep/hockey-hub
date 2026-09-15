@@ -64,6 +64,12 @@ def _norm(value: str) -> str:
 
 
 def _source_kind(table: dict) -> StageKind | None:
+    explicit = _norm(table.get("postseason_stage") or "")
+    if explicit in {"play_in", "play-in", "play in", "плей-ин"}:
+        return StageKind.PLAY_IN
+    if explicit in {"playoff", "play-off", "плей-офф"}:
+        return StageKind.PLAYOFF
+
     text = _norm(" ".join(str(table.get(k) or "") for k in ("title", "note", "status_text")))
     if any(x in text for x in ("плей-ин", "play-in", "play in")):
         return StageKind.PLAY_IN
