@@ -72,6 +72,11 @@ def fetch_khl_paginated(api_base: str, league: str, wanted_name: str) -> list[ba
             home_score, away_score = base.parse_score(event.get("score"))
             state = str(event.get("game_state_key") or "").lower()
             status = "finished" if state == "finished" else "live" if state == "in_progress" else "scheduled"
+            # KHL API часто заранее отдаёт score='0:0'. Для ещё не начавшегося матча
+            # это не счёт, поэтому в интерфейсе показываем тире.
+            if status == "scheduled":
+                home_score = None
+                away_score = None
             scores = event.get("scores") or {}
             decision = "SO" if isinstance(scores, dict) and scores.get("bullitt") else "OT" if isinstance(scores, dict) and scores.get("overtime") else None
             khl_id = event.get("khl_id")
@@ -103,5 +108,13 @@ def fetch_khl_paginated(api_base: str, league: str, wanted_name: str) -> list[ba
 
 
 base.fetch_khl = fetch_khl_paginated
-base.app.version = "0.6.0"
+base.app.version = "0.6.1"
+
+# В v0.5 номер версии в шапке был текстом, а не значением FastAPI.
+_original_render_page = base.render_page
+
+def render_page_v061() -> str:
+    return _original_render_page().replace("v0.5", "v0.6", 1)
+
+base.render_page = render_page_v061
 app = base.app
