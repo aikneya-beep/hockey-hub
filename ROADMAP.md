@@ -14,13 +14,16 @@ Goal: make playoff monitoring work correctly across KHL, VHL, MHL and SPbHL.
 
 - ✅ Common model: `Season -> Stage -> Series -> Games`.
 - ✅ League season-calendar adapters for KHL, VHL and MHL; SPbHL uses the active tournament title as its stage signal.
+- ✅ KHL schedule keeps official `not_regular` postseason events while regular standings continue to exclude them.
+- ✅ Official SKA-family playoff-page probes can override calendar fallback once the current-season bracket is published.
 - ✅ Safe series detection only inside the active postseason window, so regular-season rematches cannot become fake playoff series.
+- ✅ Round transitions follow the nearest future opponent / latest played opponent, instead of getting stuck on a longer previous series.
 - ✅ Machine-readable qualification states: direct playoff / play-in / outside / postseason.
 - ✅ Series score/status model, including completed best-of-seven series for KHL/VHL.
-- ⏳ Add source-specific postseason signals/parsers so source data overrides calendar fallback whenever the league exposes round/series metadata.
-- ⏳ Track current opponent, series score, next game and completed games as a first-class team-page block.
-- ⏳ Switch team pages from standings-first to series-first layout once postseason starts.
-- ⏳ Add bracket visualization when source data is reliable enough.
+- ✅ Team pages get a first-class postseason block with current opponent, series score, target wins when known, next game and completed series games.
+- ✅ Team pages become series-first automatically once play-in/playoff is active; regular-season pages stay unchanged.
+- ⏳ Extend source-specific round metadata beyond stage detection when league pages expose reliable round names/pairings.
+- ⏳ Add full bracket visualization when source data is reliable enough.
 
 ## 2. Persistence foundation
 
