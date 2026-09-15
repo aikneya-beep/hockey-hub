@@ -9,8 +9,8 @@ from league_live_v39 import (
     VHL_TEAM_CALENDAR,
     cached_team_games,
     overlay_mhl_live,
-    overlay_vhl_live,
 )
+from vhl_online_v39 import overlay_vhl_live
 
 core.app.version = "0.39.0"
 
@@ -41,8 +41,9 @@ def fetch_ska_site_v39(url: str, wanted_name: str, league: str):
             game.source_url = MHL_CALENDAR
         overlay_mhl_live(games, wanted_name)
     elif league == "ВХЛ":
-        # The official VHL team calendar is a more useful source than the club
-        # schedule and links into online.vhlru.ru while a game is in progress.
+        # Future/non-live matches point at the official VHL team calendar. During
+        # a live game the official online center replaces this with the concrete
+        # text/live match page.
         for game in games:
             game.source_url = VHL_TEAM_CALENDAR
         overlay_vhl_live(games, wanted_name)
