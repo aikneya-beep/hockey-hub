@@ -17,3 +17,7 @@ jobs:
       - run: pytest -q
         env:
           PYTHONPATH: .
+      - name: Import production app
+        run: python -c "import app; print(app.app.version)"
+        env:
+          PYTHONPATH: .
