@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from collections import Counter
 
-from hockey_domain import Series, SeriesStatus, StageKind
+from hockey_domain import QualificationState, Series, SeriesStatus, StageKind
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,8 @@ class PlayoffSnapshot:
     summary: str
     source_url: str | None
     series: Series | None = None
+    qualification_state: QualificationState = QualificationState.UNKNOWN
+    position: int | None = None
 
 
 def _norm(value: str) -> str:
@@ -30,6 +32,36 @@ def _kind_from_title(title: str) -> StageKind:
     if "плей-офф" in text or "playoff" in text or "кубок" in text:
         return StageKind.PLAYOFF
     return StageKind.REGULAR
+
+
+def _team_column(headers: list[str]) -> int:
+    for i, h in enumerate(headers):
+        if _norm(h) in {"команда", "команды", "клуб"}:
+            return i
+    return 1 if len(headers) > 1 else 0
+
+
+def _qualification_from_table(table: dict, team_name: str) -> tuple[QualificationState, int | None]:
+    headers = list(table.get("headers") or [])
+    rows = list(table.get("rows") or [])
+    idx = _team_column(headers)
+    position = None
+    for pos, row in enumerate(rows, 1):
+        if idx < len(row) and _norm(row[idx]) == _norm(team_name):
+            position = pos
+            break
+    if position is None:
+        return QualificationState.UNKNOWN, None
+
+    zones = table.get("zones") or {}
+    zone = zones.get(position)
+    if zone == "direct":
+        return QualificationState.DIRECT, position
+    if zone == "playin":
+        return QualificationState.PLAY_IN, position
+    if zones:
+        return QualificationState.OUTSIDE, position
+    return QualificationState.UNKNOWN, position
 
 
 def _series_from_games(team_name: str, league: str, stage_name: str, games, now: datetime) -> Series | None:
@@ -91,14 +123,21 @@ def build_snapshot(team_key: str, team_name: str, league: str, table: dict, game
     source = table.get("source")
 
     if kind == StageKind.REGULAR:
+        qualification, position = _qualification_from_table(table, team_name)
         stage_name = title
         if not summary:
             summary = "Регулярный этап · положение относительно зоны плей-офф пока определяется по таблице"
-        return PlayoffSnapshot(team_key, team_name, league, kind, stage_name, summary, source, None)
+        return PlayoffSnapshot(
+            team_key, team_name, league, kind, stage_name, summary, source, None,
+            qualification, position,
+        )
 
     series = _series_from_games(team_name, league, title, games, now)
     if series:
         summary = f"{title} · серия с {series.team_b} {series.score_text}"
     elif not summary:
         summary = f"{title} · серия ещё не определена"
-    return PlayoffSnapshot(team_key, team_name, league, kind, title, summary, source, series)
+    return PlayoffSnapshot(
+        team_key, team_name, league, kind, title, summary, source, series,
+        QualificationState.POSTSEASON, None,
+    )
