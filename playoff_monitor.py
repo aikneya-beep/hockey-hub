@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from collections import Counter
 
 from hockey_domain import QualificationState, Series, SeriesStatus, StageKind
+from postseason_adapters import detect_stage
 
 
 @dataclass(frozen=True)
@@ -23,15 +24,6 @@ class PlayoffSnapshot:
 
 def _norm(value: str) -> str:
     return " ".join(str(value or "").casefold().replace("ё", "е").split())
-
-
-def _kind_from_title(title: str) -> StageKind:
-    text = _norm(title)
-    if "плей-ин" in text or "play-in" in text or "play in" in text:
-        return StageKind.PLAY_IN
-    if "плей-офф" in text or "playoff" in text or "кубок" in text:
-        return StageKind.PLAYOFF
-    return StageKind.REGULAR
 
 
 def _team_column(headers: list[str]) -> int:
@@ -64,43 +56,55 @@ def _qualification_from_table(table: dict, team_name: str) -> tuple[Qualificatio
     return QualificationState.UNKNOWN, position
 
 
-def _series_from_games(team_name: str, league: str, stage_name: str, games, now: datetime) -> Series | None:
-    # Series detection is intentionally enabled only once the source itself says
-    # that we are in play-in/playoff. Repeated opponents are common in regular
-    # seasons and must not be mistaken for a series.
+def _series_from_games(
+    team_name: str,
+    league: str,
+    stage_name: str,
+    games,
+    now: datetime,
+    series_since: datetime | None = None,
+    wins_needed: int | None = None,
+) -> Series | None:
+    # The stage adapter has already established that this is postseason. Keep
+    # the series window inside the actual stage so late regular-season rematches
+    # can never be mistaken for playoff games.
+    lower_bound = now - timedelta(days=35)
+    if series_since and series_since > lower_bound:
+        lower_bound = series_since
     recent = [
         g for g in games
         if team_name in (g.home_team, g.away_team)
-        and now - timedelta(days=35) <= g.start_at <= now + timedelta(days=35)
+        and lower_bound <= g.start_at <= now + timedelta(days=35)
     ]
     if not recent:
         return None
 
-    opponents = []
-    for g in recent:
-        opponents.append(g.away_team if g.home_team == team_name else g.home_team)
-    if not opponents:
-        return None
-    opponent, count = Counter(opponents).most_common(1)[0]
-    if count < 2:
-        return None
+    opponents = [g.away_team if g.home_team == team_name else g.home_team for g in recent]
+    opponent, _count = Counter(opponents).most_common(1)[0]
+    series_games = sorted(
+        [g for g in recent if opponent in (g.home_team, g.away_team)],
+        key=lambda g: g.start_at,
+    )
 
-    series_games = [g for g in recent if opponent in (g.home_team, g.away_team)]
     wins_team = 0
     wins_opp = 0
+    finished_count = 0
     for g in series_games:
         if g.status != "finished" or g.home_score is None or g.away_score is None:
             continue
+        finished_count += 1
         winner = g.home_team if g.home_score > g.away_score else g.away_team
         if winner == team_name:
             wins_team += 1
         elif winner == opponent:
             wins_opp += 1
 
-    has_future = any(g.status != "finished" and g.start_at >= now - timedelta(hours=4) for g in series_games)
-    status = SeriesStatus.ACTIVE if has_future else SeriesStatus.UPCOMING
-    if not has_future and (wins_team or wins_opp):
+    if wins_needed and max(wins_team, wins_opp) >= wins_needed:
+        status = SeriesStatus.FINISHED
+    elif finished_count:
         status = SeriesStatus.ACTIVE
+    else:
+        status = SeriesStatus.UPCOMING
 
     return Series(
         league=league,
@@ -110,6 +114,7 @@ def _series_from_games(team_name: str, league: str, stage_name: str, games, now:
         team_b=opponent,
         wins_a=wins_team,
         wins_b=wins_opp,
+        wins_needed=wins_needed,
         status=status,
         source_url=next((g.source_url for g in series_games if g.source_url), None),
         game_ids=[g.source_game_id for g in series_games],
@@ -118,26 +123,44 @@ def _series_from_games(team_name: str, league: str, stage_name: str, games, now:
 
 def build_snapshot(team_key: str, team_name: str, league: str, table: dict, games, now: datetime) -> PlayoffSnapshot:
     title = str(table.get("title") or "Регулярный сезон")
-    kind = _kind_from_title(title)
+    qualification, position = _qualification_from_table(table, team_name)
+    decision = detect_stage(team_key, team_name, table, games, now, qualification)
     summary = str(table.get("status_text") or "")
     source = table.get("source")
 
-    if kind == StageKind.REGULAR:
-        qualification, position = _qualification_from_table(table, team_name)
-        stage_name = title
+    if decision.kind == StageKind.REGULAR:
         if not summary:
             summary = "Регулярный этап · положение относительно зоны плей-офф пока определяется по таблице"
         return PlayoffSnapshot(
-            team_key, team_name, league, kind, stage_name, summary, source, None,
-            qualification, position,
+            team_key, team_name, league, decision.kind, decision.name or title,
+            summary, source, None, qualification, position,
         )
 
-    series = _series_from_games(team_name, league, title, games, now)
+    if decision.kind == StageKind.OTHER:
+        summary = decision.summary_hint or summary or decision.name
+        return PlayoffSnapshot(
+            team_key, team_name, league, decision.kind, decision.name,
+            summary, source, None, qualification, position,
+        )
+
+    series = _series_from_games(
+        team_name,
+        league,
+        decision.name,
+        games,
+        now,
+        series_since=decision.series_since,
+        wins_needed=decision.wins_needed,
+    )
     if series:
-        summary = f"{title} · серия с {series.team_b} {series.score_text}"
-    elif not summary:
-        summary = f"{title} · серия ещё не определена"
+        suffix = f" · серия с {series.team_b} {series.score_text}"
+        if series.wins_needed:
+            suffix += f" (до {series.wins_needed} побед)"
+        summary = f"{decision.name}{suffix}"
+    else:
+        summary = decision.summary_hint or f"{decision.name} · соперник/серия ещё не определены"
+
     return PlayoffSnapshot(
-        team_key, team_name, league, kind, title, summary, source, series,
+        team_key, team_name, league, decision.kind, decision.name, summary, source, series,
         QualificationState.POSTSEASON, None,
     )
