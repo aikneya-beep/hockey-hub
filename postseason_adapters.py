@@ -64,16 +64,23 @@ def _norm(value: str) -> str:
 
 
 def _source_kind(table: dict) -> StageKind | None:
+    """Detect an *active* postseason stage from authoritative table metadata.
+
+    Qualification text such as "в зоне плей-офф" describes a team's current
+    position during the regular season and must never switch the site into an
+    active playoff series. Therefore only an explicit field or the table/stage
+    title itself is considered a strong source signal here.
+    """
     explicit = _norm(table.get("postseason_stage") or "")
     if explicit in {"play_in", "play-in", "play in", "плей-ин"}:
         return StageKind.PLAY_IN
     if explicit in {"playoff", "play-off", "плей-офф"}:
         return StageKind.PLAYOFF
 
-    text = _norm(" ".join(str(table.get(k) or "") for k in ("title", "note", "status_text")))
-    if any(x in text for x in ("плей-ин", "play-in", "play in")):
+    title = _norm(table.get("title") or "")
+    if any(x in title for x in ("плей-ин", "play-in", "play in")):
         return StageKind.PLAY_IN
-    if any(x in text for x in ("плей-офф", "playoff", "кубок гагарина", "кубок харламова", "кубок чемпиона")):
+    if any(x in title for x in ("плей-офф", "playoff", "кубок гагарина", "кубок харламова", "кубок чемпиона")):
         return StageKind.PLAYOFF
     return None
 
@@ -152,9 +159,8 @@ def detect_stage(
 
     plan = PLANS.get(team_key)
 
-    # Official KHL events carry a non-regular marker. Once the regular season is
-    # over, that is stronger evidence than a standings page that may still show
-    # the final regular table.
+    # Official event stage hints are only considered after the regular season
+    # calendar has ended. During September-March the qualification table wins.
     official_games = _official_postseason_games(team_name, games, now)
     if official_games and (not plan or not plan.regular_end or now.date() > plan.regular_end):
         first = min(g.start_at for g in official_games)
@@ -229,9 +235,6 @@ def detect_stage(
         return StageDecision(StageKind.OTHER, "Между этапами", source="calendar")
 
     if plan.playoff_start and plan.playoff_end and plan.playoff_start <= today <= plan.playoff_end:
-        # KHL/VHL direct qualification is enough. For an MHL team that entered
-        # through play-in, require an actual playoff game in the feed before we
-        # claim it advanced.
         advanced = qualification == QualificationState.DIRECT
         if qualification == QualificationState.PLAY_IN:
             advanced = _has_games_since(team_name, games, plan.playoff_start)
