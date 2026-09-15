@@ -4,9 +4,15 @@ import app_v35 as prev
 import app_v33 as playoff_ui
 import app_v19 as feature
 import app_v05 as core
+from khl_schedule_v36 import fetch_khl_with_postseason
 from postseason_adapters import calendar_label
 
 core.app.version = "0.36.0"
+
+# Unlike v0.28, keep KHL events marked `not_regular` in the tracked match feed.
+# The standings calculator still excludes them, so playoff games cannot pollute
+# the regular-season table.
+core.fetch_khl = fetch_khl_with_postseason
 
 # Keep the visible postseason hints generated from the same season plans that
 # drive stage detection, so UI text and backend logic cannot drift apart.
