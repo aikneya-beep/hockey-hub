@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from collections import Counter
 
 from hockey_domain import QualificationState, Series, SeriesStatus, StageKind
 from postseason_adapters import detect_stage
@@ -56,6 +55,37 @@ def _qualification_from_table(table: dict, team_name: str) -> tuple[Qualificatio
     return QualificationState.UNKNOWN, position
 
 
+def _opponent(team_name: str, game) -> str:
+    return game.away_team if game.home_team == team_name else game.home_team
+
+
+def _current_series_opponent(team_name: str, recent, now: datetime) -> str:
+    """Choose the current round, not the opponent with the most historical games.
+
+    A newly published game in the next round immediately becomes authoritative.
+    Until that happens, keep the opponent from the most recently played series.
+    """
+    future = sorted(
+        [g for g in recent if g.status != "finished" and g.start_at >= now - timedelta(hours=4)],
+        key=lambda g: g.start_at,
+    )
+    if future:
+        return _opponent(team_name, future[0])
+
+    finished = sorted(
+        [g for g in recent if g.status == "finished" and g.start_at <= now],
+        key=lambda g: g.start_at,
+        reverse=True,
+    )
+    if finished:
+        return _opponent(team_name, finished[0])
+
+    # Before game one, a source can publish dates slightly in the past/current
+    # while leaving status as scheduled. Use the latest available record.
+    latest = max(recent, key=lambda g: g.start_at)
+    return _opponent(team_name, latest)
+
+
 def _series_from_games(
     team_name: str,
     league: str,
@@ -79,8 +109,7 @@ def _series_from_games(
     if not recent:
         return None
 
-    opponents = [g.away_team if g.home_team == team_name else g.home_team for g in recent]
-    opponent, _count = Counter(opponents).most_common(1)[0]
+    opponent = _current_series_opponent(team_name, recent, now)
     series_games = sorted(
         [g for g in recent if opponent in (g.home_team, g.away_team)],
         key=lambda g: g.start_at,
@@ -116,7 +145,7 @@ def _series_from_games(
         wins_b=wins_opp,
         wins_needed=wins_needed,
         status=status,
-        source_url=next((g.source_url for g in series_games if g.source_url), None),
+        source_url=next((g.source_url for g in reversed(series_games) if g.source_url), None),
         game_ids=[g.source_game_id for g in series_games],
     )
 
