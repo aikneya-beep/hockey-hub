@@ -12,6 +12,14 @@ class StageKind(StrEnum):
     OTHER = "other"
 
 
+class QualificationState(StrEnum):
+    DIRECT = "direct_playoff"
+    PLAY_IN = "play_in"
+    OUTSIDE = "outside"
+    POSTSEASON = "postseason"
+    UNKNOWN = "unknown"
+
+
 class SeriesStatus(StrEnum):
     UPCOMING = "upcoming"
     ACTIVE = "active"
