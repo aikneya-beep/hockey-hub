@@ -11,6 +11,11 @@ except Exception:  # pragma: no cover
 
 
 SCHEMA_SQL = """
+create table if not exists personal_hockey_meta (
+    key text primary key,
+    value text not null
+);
+
 create table if not exists personal_hockey_gear (
     id bigserial primary key,
     category text not null,
