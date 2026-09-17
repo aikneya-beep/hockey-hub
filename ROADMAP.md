@@ -1,77 +1,396 @@
-# Hockey Hub roadmap
+# Hockey Hub — актуальная дорожная карта
 
-## 0. Stable baseline — done / ongoing
+Актуально для production `v0.48.1`.
 
-- Stable match feed for СКА, СКА-ВМФ, СКА-1946, Академия СКА and Эскулап.
-- Standings and qualification zones.
-- Automatic Эскулап tournament discovery.
-- Arenas in match cards and normalized match model.
-- CI smoke/tests for playoff logic and production import.
+## Продуктовая архитектура
 
-## 1. Postseason model and league adapters — current priority
+Hockey Hub — личная хоккейная операционная система из трёх верхнеуровневых экранов:
 
-Goal: make playoff monitoring work correctly across KHL, VHL, MHL and SPbHL.
+- **Главная** — персональный briefing: за минуту понять, что происходит сегодня в хоккейном мире пользователя.
+- **Большой хоккей** — внешний хоккейный мир: СКА-система, НХЛ, международный хоккей, новости и история.
+- **Мой хоккей** — закрытая личная зона: развитие игрока, Тёма и его команды, экипировка/покупки и личная хоккейная память.
 
-- ✅ Common model: `Season -> Stage -> Series -> Games`.
-- ✅ League season-calendar adapters for KHL, VHL and MHL; SPbHL uses the active tournament title as its stage signal.
-- ✅ KHL schedule keeps official `not_regular` postseason events while regular standings continue to exclude them.
-- ✅ Official SKA-family playoff-page probes can override calendar fallback once the current-season bracket is published.
-- ✅ Safe series detection only inside the active postseason window, so regular-season rematches cannot become fake playoff series.
-- ✅ Round transitions follow the nearest future opponent / latest played opponent, instead of getting stuck on a longer previous series.
-- ✅ Machine-readable qualification states: direct playoff / play-in / outside / postseason.
-- ✅ Series score/status model, including completed best-of-seven series for KHL/VHL.
-- ✅ Team pages get a first-class postseason block with current opponent, series score, target wins when known, next game and completed series games.
-- ✅ Team pages become series-first automatically once play-in/playoff is active; regular-season pages stay unchanged.
-- ⏳ Extend source-specific round metadata beyond stage detection when league pages expose reliable round names/pairings.
-- ⏳ Add full bracket visualization when source data is reliable enough.
+Публичные матчи **Эскулапа** остаются видны на Главной всем. Личные тренировки, заметки, прогресс, инвентарь и другие персональные данные должны показываться только после авторизации.
 
-## 2. Persistence foundation
+### Визуальный язык
 
-Goal: move from process memory to durable normalized storage without breaking the current UI.
+- **Главная:** нейтральный тёмный shell, в котором смешиваются два мира.
+- **Большой хоккей:** тёмная база + красный и ультрамарин как яркие событийные акценты.
+- **Мой хоккей:** почти чёрный / графит / серебро + несколько процентов холодного Soyuz-blue.
+- Общие принципы: минимализм, высокая читаемость, карточная система, адаптивность, без декоративных элементов, мешающих контенту.
 
-- PostgreSQL schema for leagues, teams, seasons, stages, games, arenas and playoff series.
-- Mirror current collector output into PostgreSQL.
-- Verify counts, scores, timestamps and arenas against the proven in-memory cache.
-- Switch read APIs to PostgreSQL only after parity checks.
-- Switch UI to those APIs after the database becomes the trusted source.
-- Before the free Render PostgreSQL expires in October 2026, choose a permanent free database provider or deliberately upgrade.
+---
 
-## 3. Security gate — mandatory before personal data or AI
+## 0. Уже работает — текущая база ✅
 
-This stage must be completed before training notes, personal profile data, wishlists with private notes, assistant memory or OpenAI API access are added.
+### Матчи и источники
+- СКА / КХЛ.
+- СКА-ВМФ / ВХЛ.
+- СКА-1946 / МХЛ.
+- Академия СКА / МХЛ.
+- Эскулап / СПбХЛ.
+- Единая нормализованная модель матчей и арен.
+- Турнир Эскулапа определяется автоматически.
+- Live-обновление во время матчей, включая СПбХЛ.
+- Антиспойлер на Главной.
+- Таблицы и квалификационные зоны.
 
-- Add authentication for the private area (single-user is enough initially).
-- Keep public hockey data read-only; require authentication for all personal data and write operations.
-- Protect `/refresh` and all future POST/PUT/PATCH/DELETE endpoints.
-- Add server-side sessions with Secure/HttpOnly/SameSite cookies.
-- Store passwords only as modern salted hashes; never store plaintext credentials.
-- Keep `DATABASE_URL`, future `OPENAI_API_KEY` and other credentials only in Render secrets/environment variables; never commit them to GitHub or expose them to browser JS.
-- Add CSRF protection for browser write actions and strict input validation.
-- Add rate limiting, especially for refresh, search/scraping and future AI endpoints.
-- Restrict or disable production `/docs`, `/openapi.json` and diagnostic endpoints where appropriate.
-- Parameterize all SQL and keep database permissions minimal.
-- Add backup/export strategy for user-owned data before it becomes valuable.
-- Consider making the GitHub repository private as the project becomes personal, while still treating source visibility as non-secret.
+### Плей-офф
+- Общая модель `Season -> Stage -> Series -> Games`.
+- Защита от ложного определения плей-офф в регулярном сезоне.
+- Серии и переходы между раундами.
+- Qualification states: direct playoff / play-in / outside / postseason.
+- Командные postseason-блоки.
 
-## 4. UI/design pass
+### Главная
+- Новый briefing-дизайн.
+- Общий календарь ближайших матчей СКА-системы и Эскулапа.
+- «Что смотреть».
+- Быстрый обзор СКА-системы.
+- Последние результаты.
+- Навигация `Главная / Большой хоккей / Мой хоккей`.
 
-Only after the data model and main navigation stop changing rapidly.
+### Мой хоккей — «Я»
+- PostgreSQL для личных тренировок.
+- Добавление тренировок через сайт.
+- Самочувствие / нагрузка / заметки / домашние задания / комментарии тренера.
+- Контрольные замеры полного круга.
+- График динамики.
+- Базовый benchmark 11.09.2026.
+- История тренировок и фокус от тренера.
+- Чёрно-серебряный Soyuz-дизайн.
 
-- Unified design system and navigation.
-- Mobile-first cleanup.
-- Better match cards, postseason/series cards, charts and bracket components.
-- Preserve the dark, restrained "personal hockey terminal" feel rather than copying league websites.
+### Мой хоккей — «Хоккейный шкаф»
+- Отдельный экран инвентаря.
+- PostgreSQL для экипировки и wishlist.
+- Состояние, цена покупки, обслуживание, заметки.
+- Wishlist: текущая/целевая цена, магазин и URL.
+- Стартовые известные вещи: Bauer, Soyuz, KUBAITE.
+- Формы добавления экипировки и wishlist.
 
-## 5. Expansion workshop — parked intentionally
+### Инфраструктура
+- Render web service.
+- Render PostgreSQL подключён через `DATABASE_URL`.
+- Публичные данные зеркалируются в PostgreSQL, UI пока в основном остаётся на проверенном in-memory слое.
+- Базовые API и тесты для матчей, playoff и persistence.
 
-Before adding heterogeneous product areas, run a separate brainstorming/prioritization session. Candidate directions already parked include:
+---
 
-- personal training/progress;
-- news/media;
-- merch/equipment/watchlists;
-- personal hockey archive;
-- player tracking and SKA development-path view;
-- personalized "today / this week" briefing;
-- embedded AI assistant that can use Hockey Hub data and tools.
+## 1. Закрыть «Мой хоккей» авторизацией 🔴 СЛЕДУЮЩИЙ ШАГ
 
-Do not build these one by one ad hoc. First group ideas into product areas, score usefulness/complexity, then choose the next expansion wave.
+Личный раздел уже содержит реальные данные, поэтому теперь это обязательный этап.
+
+- Single-user login для `/my-hockey/**`.
+- Долгоживущая серверная сессия: вошёл один раз — браузер помнит.
+- Secure + HttpOnly + SameSite cookie.
+- Пароль хранится только как современный salted hash.
+- Все личные GET/POST закрыты авторизацией.
+- Главная остаётся публичной, но персональные карточки появляются только после входа.
+- Эскулап на Главной остаётся публичным.
+- CSRF-защита write-форм.
+- Закрыть/защитить `/refresh` и будущие изменяющие endpoints.
+- Backup/export личных данных.
+
+**Definition of done:** незалогиненный пользователь не может прочитать или изменить ни тренировку, ни экипировку, ни личную память, но публичная часть сайта работает как раньше.
+
+---
+
+## 2. Доделать каркас «Моего хоккея»
+
+### 2.1 Я — развитие игрока
+
+Текущий экран превратить в полноценную карточку хоккеиста:
+
+- цели месяца / сезона;
+- матрица навыков: катание, торможение, повороты, владение шайбой, бросок, игровые решения и т.д.;
+- контрольные тесты с историей и повторяемыми протоколами;
+- домашние задания;
+- календарь тренировок;
+- видео и привязка роликов к тренировке/навыку;
+- статистика количества тренировок, нагрузки и регулярности;
+- сравнение с собственным baseline, а не с профессиональными нормативами;
+- экспорт/годовой отчёт прогресса.
+
+### 2.2 Тёма и команды
+
+Отдельный экран, а не просто Эскулап:
+
+- Эскулап: календарь, live, результаты, таблица, состав при наличии источника;
+- другие текущие/бывшие команды Артёма Кунаева;
+- история «Сборной врачей» и других команд, если найдём надёжные данные;
+- профиль тренера;
+- тренерские комментарии и рекомендации, связанные с личными тренировками;
+- возможность отличать публичные данные команд от приватных личных заметок.
+
+### 2.3 Хоккейный шкаф
+
+Развить v0.48 из базы инвентаря в рабочий менеджер комплекта:
+
+- разложить Soyuz-комплект по отдельным слотам: шлем, нагрудник, налокотники, перчатки, шорты, щитки и т.д.;
+- клюшки, термобельё, аксессуары, расходники;
+- спортпит как отдельная категория;
+- фотографии вещей;
+- размеры и характеристики;
+- история покупок и обслуживания;
+- напоминания: заточка, стирка, ремонт, замена расходников;
+- retired / sold / replaced состояния;
+- wishlist и сравнение цены с целевой.
+
+### 2.4 Память
+
+Личный хоккейный архив:
+
+- посещённые матчи;
+- с кем ходил;
+- сектор / место;
+- билеты;
+- фото;
+- заметка и впечатления;
+- избранные матчи / моменты;
+- сезонные итоги;
+- поиск по архиву.
+
+---
+
+## 3. Главная — настоящий персональный briefing
+
+Главная должна стать главным поводом открывать Hockey Hub каждый день.
+
+### Публично
+
+- общий календарь СКА-системы + Эскулап;
+- live-события;
+- «Что смотреть сегодня»;
+- важные изменения по командам;
+- последние результаты без спойлеров по выбору пользователя;
+- свежие новости / статьи;
+- короткий NHL-блок.
+
+### После авторизации
+
+В тот же экран без отдельной «личной главной» добавляются:
+
+- ближайшая тренировка;
+- последняя тренировка и следующий контрольный тест;
+- цель месяца;
+- личные напоминания;
+- обслуживание экипировки;
+- полезные изменения wishlist/цен;
+- будущие личные хоккейные события.
+
+### Позже
+
+- «Что изменилось с прошлого визита»;
+- умный приоритет карточек;
+- briefing `сегодня / эта неделя`.
+
+---
+
+## 4. Большой хоккей — наполнить реальными разделами
+
+Каркас и красно-ультрамариновый дизайн уже есть. Дальше — данные.
+
+### 4.1 СКА-система — главный первый модуль
+
+- полноценная страница СКА-системы;
+- четыре текущие команды в одном экране;
+- календарь / результаты / таблицы / плей-офф;
+- вертикаль игроков между Академией -> МХЛ -> ВХЛ -> КХЛ;
+- карточки игроков;
+- переходы между уровнями и клубами;
+- составы;
+- травмы/статусы только из надёжных источников;
+- история сезонов.
+
+### 4.2 НХЛ
+
+Концепция: не глобальный NHL livescore, а полезный личный срез.
+
+- `НХЛ: Наши` — российские игроки;
+- расписание и результаты;
+- ночная сводка;
+- персональный watchlist игроков/команд;
+- таблицы и playoff при необходимости;
+- большие события лиги без информационного шума.
+
+### 4.3 Международный хоккей
+
+- ИИХФ;
+- чемпионаты мира;
+- Олимпиада;
+- молодёжные турниры;
+- сборные;
+- Россия — когда возвращается в официальный международный календарь;
+- краткий календарь, результаты, таблицы и турнирная сетка.
+
+### 4.4 Новости
+
+- агрегатор из выбранных надёжных источников;
+- дедупликация одной новости из нескольких СМИ;
+- разметка по СКА / КХЛ / НХЛ / международке;
+- персональные фильтры;
+- краткие summaries без кликбейта;
+- будущий блок «почему это мне интересно».
+
+### 4.5 История / энциклопедия
+
+- история КХЛ по сезонам;
+- ключевые команды / события / реформы;
+- исторические статьи;
+- связка исторических материалов с текущими командами и игроками;
+- личный список «что почитать / посмотреть».
+
+---
+
+## 5. Умные мониторинги и автоматизация
+
+### Магазины и цены
+
+- мониторинг выбранных wishlist URL;
+- Ozon / Яндекс Маркет / профильные хоккейные магазины — только там, где технически и юридически стабильно;
+- история цены;
+- уведомление при достижении целевой цены или появлении в наличии;
+- не слать уведомления при каждом незначительном изменении.
+
+### Матчи
+
+Текущий live-loop рабочий, но следующий технический уровень:
+
+- KHL — узкий live endpoint вместо полного team refresh;
+- MHL — только root + detail текущего матча;
+- VHL — только online match center;
+- СПбХЛ — только нужный текущий матч;
+- клиентское обновление live-карточек без полной перезагрузки страницы.
+
+### Напоминания
+
+- тренировка;
+- повтор контрольного теста;
+- обслуживание экипировки;
+- важный матч;
+- price target / наличие.
+
+---
+
+## 6. Postseason / турнирные режимы
+
+Текущая модель уже рабочая, но UI ещё можно довести:
+
+- надёжные названия раундов из league-specific источников;
+- полноценная bracket-визуализация;
+- история серий;
+- единый postseason UI для KHL / VHL / MHL / SPbHL;
+- турнирные сетки международного хоккея.
+
+Не делать bracket из догадок: только когда источник позволяет восстановить сетку надёжно.
+
+---
+
+## 7. Техническая база и качество — параллельный трек
+
+### Архитектура
+
+Главный технический долг — историческая цепочка `app_vXX.py`.
+
+- перестать наращивать бесконечные overlay-файлы после стабилизации текущего продукта;
+- разнести routes / services / adapters / stores / UI components по нормальным модулям;
+- общий design system вместо CSS-патчей по версиям;
+- разделить public hockey storage и private user storage на понятные сервисы.
+
+### PostgreSQL
+
+Публичный матчевый слой пока зеркалируется в PostgreSQL, но UI по-прежнему читает в основном проверенный in-memory cache.
+
+- добиться parity;
+- переключить read API на PostgreSQL;
+- после проверки переключить UI;
+- хранить snapshots/историю, а не только текущее состояние.
+
+### Render / storage
+
+- до окончания/изменения условий бесплатного Render PostgreSQL принять решение о постоянной БД или тарифе;
+- резервное копирование личных данных;
+- понятная миграция БД.
+
+### Качество
+
+- тесты для auth и приватности;
+- тесты форм/БД;
+- тесты live boundaries;
+- source health monitoring;
+- мобильная адаптация всех новых экранов;
+- PWA после стабилизации shell;
+- accessibility и keyboard navigation.
+
+---
+
+## 8. AI / Помощник — позже, когда данные достаточно зрелые
+
+Не добавлять LLM только ради чат-окна.
+
+Помощник имеет смысл, когда он сможет работать с настоящими данными Hockey Hub:
+
+- «Как у меня менялся полный круг за сезон?»
+- «Что Тёма чаще всего говорит мне исправлять?»
+- «Что из экипы скоро требует обслуживания?»
+- «Что сегодня смотреть?»
+- «Какие игроки прошли из СКА-1946 через ВМФ в основу?»
+- «Что изменилось в моём хоккейном мире за неделю?»
+
+Перед этим обязательны auth, разграничение public/private данных, стабильные API и контроль стоимости вызовов.
+
+---
+
+# Приоритет ближайших разработческих волн
+
+## Волна A — защита личного мира
+
+1. Auth для всего `/my-hockey/**`.
+2. Сессии / CSRF / защита write endpoints.
+3. Личный слой на Главной только после входа.
+4. Backup/export личной БД.
+
+## Волна B — завершить «Мой хоккей» как продукт
+
+1. `Тёма и команды`.
+2. Навыки / цели / тесты / календарь в разделе `Я`.
+3. Детализировать шкаф.
+4. `Память`.
+5. Первый реальный price-monitoring.
+
+## Волна C — Большой хоккей
+
+1. Полноценная СКА-система.
+2. Вертикаль игроков.
+3. НХЛ: Наши.
+4. Международный хоккей.
+5. Новости.
+6. История / энциклопедия.
+
+## Волна D — умная Главная
+
+1. Единый календарь матчей + приватных тренировок после auth.
+2. Персональные алерты.
+3. NHL overnight.
+4. Price/service alerts.
+5. «Что изменилось с прошлого визита».
+
+## Волна E — автоматизация и AI
+
+1. Оптимизированный live pipeline.
+2. Уведомления.
+3. Глубокий store monitoring.
+4. AI-помощник поверх Hockey Hub API и личных данных.
+
+---
+
+## Что НЕ является приоритетом сейчас
+
+- глобальный livescore всего мирового хоккея;
+- социальная сеть;
+- аккаунты многих пользователей;
+- сложная CMS;
+- собственный мобильный native app;
+- декоративные функции без данных и реального сценария использования.
+
+Главный критерий очередности: **помогает ли функция быстрее понять свой хоккейный мир, следить за важным или видеть собственный прогресс**.
