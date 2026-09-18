@@ -41,7 +41,12 @@ def _card_context(anchor) -> str:
 
 
 def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
-    """Overlay SKA-VMF state from the official VHL online match center."""
+    """Overlay SKA-VMF state from the official VHL online match center.
+
+    Important: the ordinary VHL/team calendar can expose a running numeric
+    score while the match is still in progress. A numeric score alone must
+    therefore never be treated as a final result inside the live window.
+    """
     now = datetime.now(core.MOSCOW)
     for game in games:
         game.source_url = VHL_TEAM_CALENDAR
@@ -53,7 +58,7 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
     except Exception as exc:
         print(f"[live] VHL {wanted_name}: online center unavailable: {type(exc).__name__}: {exc}", flush=True)
         for game in games:
-            if game.start_at.date() == now.date() and _near_now(game, now) and game.status == "scheduled":
+            if game.start_at.date() == now.date() and _near_now(game, now):
                 game.status = "live"
         return 0
 
@@ -70,14 +75,14 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
     updated = 0
     for game in todays:
         if not candidates:
-            if _near_now(game, now) and game.status == "scheduled":
+            # The club/team calendar may already contain a running score and
+            # the legacy schedule parser labels any numeric score as finished.
+            # Within the live window that is unsafe: keep the match live until
+            # the official online center explicitly reports completion.
+            if _near_now(game, now):
                 game.status = "live"
             continue
 
-        # There is only one tracked VHL team. The online page's compact card
-        # that contains the VМФ abbreviation is therefore the relevant match.
-        # If several somehow appear, prefer the one whose opponent is written
-        # out in the card; otherwise use the first current VМФ card.
         opponent = game.away_team if game.home_team == wanted_name else game.home_team
         chosen = next((c for c in candidates if _norm(opponent) in _norm(c[1])), candidates[0])
         href, context = chosen
@@ -86,7 +91,8 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
             game.home_score = int(score_match.group(1))
             game.away_score = int(score_match.group(2))
         low = _norm(context)
-        game.status = "finished" if any(x in low for x in ("матч завершен", "матч завершён", "окончен")) else "live"
+        explicit_finished = any(x in low for x in ("матч завершен", "матч завершён", "окончен"))
+        game.status = "finished" if explicit_finished else "live"
         game.source_url = href
         updated += 1
         print(
