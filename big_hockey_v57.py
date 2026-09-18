@@ -13,7 +13,7 @@ from design_system_v46 import COMMON_CSS, topbar
 from playoff_monitor import build_snapshot
 
 
-VERSION = "0.57.1"
+VERSION = "0.57.2"
 personal_v56.VERSION = VERSION
 
 
@@ -363,7 +363,7 @@ applySpoiler();
 
 # The existing /big-hockey route resolves this module global dynamically.
 home_v44.render_big_hockey_v44 = render_big_hockey_v57
-core.app.version = "0.57.1"
+core.app.version = "0.57.2"
 app = core.app
 
 
