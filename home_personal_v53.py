@@ -98,11 +98,9 @@ def render_home_v53() -> str:
     page = _previous_home()
     if not _HOME_AUTH.get():
         soup = BeautifulSoup(page, "html.parser")
-        for node in soup.find_all(string=True):
-            raw = str(node)
-            if "HOCKEY HUB" in raw and "ПЕРСОНАЛЬНЫЙ BRIEFING" in raw:
-                node.replace_with("HOCKEY HUB · v0.53.1 · ПЕРСОНАЛЬНЫЙ BRIEFING")
-                break
+        eyebrow = soup.select_one(".hero .eyebrow")
+        if eyebrow:
+            eyebrow.string = "Hockey Hub · v0.53.2 · персональный briefing"
         return str(soup)
 
     soup = BeautifulSoup(page, "html.parser")
@@ -137,11 +135,9 @@ def render_home_v53() -> str:
 @media(max-width:560px){.home-personal-grid{grid-template-columns:1fr}}
 """)
 
-    for node in soup.find_all(string=True):
-        raw = str(node)
-        if "HOCKEY HUB" in raw and "ПЕРСОНАЛЬНЫЙ BRIEFING" in raw:
-            node.replace_with("HOCKEY HUB · v0.53.1 · ПЕРСОНАЛЬНЫЙ BRIEFING")
-            break
+    eyebrow = soup.select_one(".hero .eyebrow")
+    if eyebrow:
+        eyebrow.string = "Hockey Hub · v0.53.2 · персональный briefing"
     return str(soup)
 
 
@@ -167,6 +163,6 @@ async def home_personal_context(request, call_next):
 
 
 core.render_page = render_home_v53
-core.app.version = "0.53.1"
+core.app.version = "0.53.2"
 
 app = core.app
