@@ -52,10 +52,11 @@ def previous_season_id(season_id: int) -> int:
 
 
 def _stats(report: str, season_id: int, limit: int = 100) -> list[dict]:
+    sort_property = "wins" if report.startswith("goalie/") else "points"
     params = {
         "isAggregate": "false",
         "isGame": "false",
-        "sort": json.dumps([{"property": "points", "direction": "DESC"}], separators=(",", ":")),
+        "sort": json.dumps([{"property": sort_property, "direction": "DESC"}], separators=(",", ":")),
         "start": 0,
         "limit": limit,
         "cayenneExp": f'seasonId={season_id} and nationalityCode="RUS"',
@@ -157,6 +158,95 @@ def player_rows(stats_payload: dict) -> list[dict]:
     return rows
 
 
+
+NHL_TEAMS = (
+    "ANA","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM","FLA",
+    "LAK","MIN","MTL","NJD","NSH","NYI","NYR","OTT","PHI","PIT","SEA","SJS",
+    "STL","TBL","TOR","UTA","VAN","VGK","WPG","WSH",
+)
+
+
+def _localized(value) -> str:
+    if isinstance(value, dict):
+        return value.get("default") or value.get("en") or next(iter(value.values()), "")
+    return str(value or "")
+
+
+def club_roster(team: str) -> dict:
+    team = team.upper()
+    def load():
+        try:
+            return _get(f"{WEB_BASE}/roster/{team}/current")
+        except Exception as exc:
+            print(f"[nhl] roster {team}: {type(exc).__name__}: {exc}", flush=True)
+            return {}
+    return _cached(f"roster-current-{team}", 60 * 60 * 6, load)
+
+
+def current_russian_roster() -> list[dict]:
+    def load():
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        rows: list[dict] = []
+
+        def one(team: str):
+            payload = club_roster(team)
+            found = []
+            for section, fallback_pos in (("forwards", "F"), ("defensemen", "D"), ("goalies", "G")):
+                for player in payload.get(section) or []:
+                    country = (player.get("birthCountry") or player.get("countryCode") or "").upper()
+                    if country != "RUS":
+                        continue
+                    first = _localized(player.get("firstName"))
+                    last = _localized(player.get("lastName"))
+                    found.append({
+                        "id": player.get("id"),
+                        "name": " ".join(x for x in (first, last) if x).strip() or "—",
+                        "team": team,
+                        "position": player.get("positionCode") or fallback_pos,
+                    })
+            return found
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(one, team) for team in NHL_TEAMS]
+            for future in as_completed(futures):
+                try:
+                    rows.extend(future.result())
+                except Exception as exc:
+                    print(f"[nhl] roster discovery: {type(exc).__name__}: {exc}", flush=True)
+
+        dedup: dict[int | str, dict] = {}
+        for row in rows:
+            key = row.get("id") or f'{row.get("team")}:{row.get("name")}'
+            dedup[key] = row
+        return sorted(dedup.values(), key=lambda x: (x.get("team") or "", x.get("name") or ""))
+
+    return _cached("current-russian-roster", 60 * 60 * 6, load)
+
+
+def merge_current_roster_with_stats(roster: list[dict], stats_rows: list[dict]) -> list[dict]:
+    by_id = {row.get("id"): row for row in stats_rows if row.get("id") is not None}
+    result = []
+    for player in roster:
+        merged = dict(by_id.get(player.get("id")) or {})
+        merged.update({
+            "id": player.get("id"),
+            "name": player.get("name") or merged.get("name") or "—",
+            "team": player.get("team") or merged.get("team") or "",
+            "position": player.get("position") or merged.get("position") or "",
+            "kind": "goalie" if (player.get("position") == "G") else "skater",
+        })
+        result.append(merged)
+
+    result.sort(
+        key=lambda x: (
+            0 if x.get("kind") == "skater" else 1,
+            -(x.get("points") or 0) if x.get("kind") == "skater" else -(x.get("wins") or 0),
+            x.get("name") or "",
+        )
+    )
+    return result
+
+
 def club_schedule(team: str, season_id: int) -> list[dict]:
     team = (team or "").strip().upper()
     if not team:
@@ -233,11 +323,14 @@ def team_context(players: list[dict], current_season_id: int, now: datetime | No
 def load_russians(now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     stats = russian_stats(now)
-    players = player_rows(stats)
+    stat_rows = player_rows(stats)
+    roster = current_russian_roster()
+    players = merge_current_roster_with_stats(roster, stat_rows) if roster else stat_rows
     contexts = team_context(players, stats["current_season_id"], now)
     return {
         **stats,
         "players": players,
         "teams": contexts,
+        "roster_source": "current" if roster else "stats-fallback",
         "loaded_at": datetime.now(timezone.utc).isoformat(),
     }
