@@ -31,7 +31,8 @@ DEV = DevelopmentStore()
 MEMORY = MemoryStore()
 MAX_MEMORY_PHOTOS = 20
 
-# Stores bootstrap. Errors remain visible through their normal status/load payloads.
+# Stores bootstrap. Personal schema must exist before development adds session links.
+PERSONAL.load()
 DEV.load()
 MEMORY.load()
 
@@ -79,10 +80,11 @@ def _tabs(active: str) -> str:
         ("closet", "Хоккейный шкаф", "/my-hockey/closet"),
         ("memory", "Память", "/my-hockey/memory"),
     ]
-    return '<nav class="mine-tabs">' + "".join(
-        f'<a{" class=\"active\"" if key == active else ""} href="{href}">{label}</a>'
-        for key, label, href in items
-    ) + "</nav>"
+    links = []
+    for key, label, href in items:
+        active_attr = ' class="active"' if key == active else ""
+        links.append(f'<a{active_attr} href="{href}">{label}</a>')
+    return '<nav class="mine-tabs">' + "".join(links) + "</nav>"
 
 
 TABS_CSS = r"""
