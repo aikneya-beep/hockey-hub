@@ -139,6 +139,63 @@ class PersonalHockeyStore:
         if value is None:
             return None
         return max(1, min(10, int(value)))
+    def update_session(
+        self,
+        session_id: int,
+        *,
+        session_date: date,
+        session_type: str,
+        focus: list[str],
+        wellbeing: int | None,
+        load: int | None,
+        note: str,
+        homework: str,
+        coach_note: str,
+        lap_1: float | None,
+        lap_2: float | None,
+    ) -> None:
+        if not self.enabled:
+            raise RuntimeError("PostgreSQL is not connected to the web service")
+        with self._connect() as conn:
+            self._prepare(conn)
+            result = conn.execute(
+                """update personal_hockey_sessions
+                   set session_date=%s,session_type=%s,focus=%s,wellbeing=%s,load=%s,note=%s,homework=%s
+                   where id=%s""",
+                (
+                    session_date, session_type.strip() or "Тренировка", focus,
+                    self._score(wellbeing), self._score(load),
+                    note.strip() or None, homework.strip() or None, int(session_id),
+                ),
+            )
+            if result.rowcount == 0:
+                raise ValueError("Тренировка не найдена")
+
+            conn.execute(
+                "delete from personal_hockey_coach_notes where session_id=%s",
+                (int(session_id),),
+            )
+            if coach_note.strip():
+                conn.execute(
+                    "insert into personal_hockey_coach_notes(note_date,text,session_id) values(%s,%s,%s)",
+                    (session_date, coach_note.strip(), int(session_id)),
+                )
+
+            conn.execute(
+                "delete from personal_hockey_tests where session_id=%s and metric='Полный круг'",
+                (int(session_id),),
+            )
+            for direction, seconds in (("Направление 1", lap_1), ("Направление 2", lap_2)):
+                if seconds is None:
+                    continue
+                conn.execute(
+                    """insert into personal_hockey_tests(
+                           test_date,metric,rink,start_mode,direction,seconds,session_id
+                       ) values(%s,'Полный круг','60×30 м','с места',%s,%s,%s)""",
+                    (session_date, direction, float(seconds), int(session_id)),
+                )
+            conn.commit()
+        self._error = None
 
     def add_session(
         self,
