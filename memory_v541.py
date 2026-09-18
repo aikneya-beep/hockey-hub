@@ -70,7 +70,7 @@ def _album_cards(matches: list[dict]) -> str:
         if score:
             meta.append(f"счёт {score}")
         if item.get("companions"):
-            meta.append(f'с {_esc(item["companions"])}')
+            meta.append(f'с {item["companions"]}')
 
         note = item.get("note") or ""
         artifact_bits = []
@@ -90,7 +90,7 @@ def _album_cards(matches: list[dict]) -> str:
             {f'<div class="memory-place">{_esc(place)}</div>' if place else ''}
             {f'<p class="memory-note">{_esc(note)}</p>' if note else '<p class="memory-note muted">Пока без заметки — только сам факт этого вечера.</p>'}
             <div class="memory-foot">
-              <div>{' · '.join(meta)}</div>
+              <div>{' · '.join(_esc(x) for x in meta)}</div>
               {f'<span class="artifact-mark">{" · ".join(artifact_bits)}</span>' if artifact_bits else ''}
             </div>
             <form method="post" action="/my-hockey/memory/{item.get("id")}/delete" class="memory-delete">
