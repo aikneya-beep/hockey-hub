@@ -182,6 +182,58 @@ class ClosetStore:
         self._error = None
         return int(item_id)
 
+    def update_item(
+        self, item_id: int, *, category: str, name: str, brand: str, model: str, color: str, condition: str,
+        purchased_on: date | None, purchase_price: str | float | None, next_service_on: date | None, notes: str,
+    ) -> None:
+        if not self.enabled:
+            raise RuntimeError("PostgreSQL is not connected")
+        if not name.strip():
+            raise ValueError("название вещи обязательно")
+        with self._connect() as conn:
+            self._prepare(conn)
+            result = conn.execute(
+                """update personal_hockey_gear
+                   set category=%s,name=%s,brand=%s,model=%s,color=%s,condition=%s,
+                       purchased_on=%s,purchase_price=%s,next_service_on=%s,notes=%s
+                   where id=%s""",
+                (
+                    category.strip() or "Другое", name.strip(), brand.strip() or None, model.strip() or None,
+                    color.strip() or None, condition.strip() or "в игре", purchased_on,
+                    self._money(purchase_price), next_service_on, notes.strip() or None, int(item_id),
+                ),
+            )
+            if result.rowcount == 0:
+                raise ValueError("вещь не найдена")
+            conn.commit()
+        self._error = None
+
+    def update_wishlist(
+        self, item_id: int, *, category: str, name: str, brand: str, target_price: str | float | None,
+        current_price: str | float | None, store: str, url: str, notes: str,
+    ) -> None:
+        if not self.enabled:
+            raise RuntimeError("PostgreSQL is not connected")
+        if not name.strip():
+            raise ValueError("название позиции обязательно")
+        with self._connect() as conn:
+            self._prepare(conn)
+            result = conn.execute(
+                """update personal_hockey_wishlist
+                   set category=%s,name=%s,brand=%s,target_price=%s,current_price=%s,
+                       store=%s,url=%s,notes=%s,updated_at=now()
+                   where id=%s""",
+                (
+                    category.strip() or "Другое", name.strip(), brand.strip() or None,
+                    self._money(target_price), self._money(current_price), store.strip() or None,
+                    url.strip() or None, notes.strip() or None, int(item_id),
+                ),
+            )
+            if result.rowcount == 0:
+                raise ValueError("позиция wishlist не найдена")
+            conn.commit()
+        self._error = None
+
     def add_wishlist(
         self, *, category: str, name: str, brand: str, target_price: str | float | None,
         current_price: str | float | None, store: str, url: str, notes: str,
