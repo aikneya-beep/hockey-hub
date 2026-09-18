@@ -12,7 +12,7 @@ import app_v05 as core
 import home_v44
 
 
-VERSION = "0.58"
+VERSION = "0.58.1"
 ska.personal_v56.VERSION = VERSION
 MSK = ZoneInfo("Europe/Moscow")
 
@@ -300,17 +300,29 @@ def render_big_hockey_v58() -> str:
 
 
 home_v44.render_big_hockey_v44 = render_big_hockey_v58
-core.app.version = "0.58.0"
+core.app.version = "0.58.1"
 app = core.app
 
 
 def _startup_smoke_v58() -> None:
+    data = nhl.load_russians(datetime.now(timezone.utc))
+    players = data.get("players") or []
+    teams = {p.get("team") for p in players if p.get("team")}
+    if len(players) < 10 or len(teams) < 5:
+        raise RuntimeError(
+            f"v0.58 NHL source too small: players={len(players)} teams={len(teams)} "
+            f"roster_source={data.get('roster_source')} errors={data.get('errors')}"
+        )
     page = render_big_hockey_v58()
     required = ("СКА-система", "НХЛ: Наши", "Россияне в НХЛ", "Все россияне в текущих ростерах")
     missing = [x for x in required if x not in page]
     if missing:
         raise RuntimeError(f"v0.58 smoke missing: {missing}")
-    print(f"[v58-smoke] big-hockey: OK chars={len(page)}", flush=True)
+    print(
+        f"[v58-smoke] big-hockey: OK chars={len(page)} "
+        f"players={len(players)} teams={len(teams)} stat_season={data.get('season_id')}",
+        flush=True,
+    )
 
 
 _startup_smoke_v58()
