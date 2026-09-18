@@ -217,7 +217,6 @@ body{{background:radial-gradient(circle at 84% 5%,rgba(42,134,217,.08),transpare
 <div class="two"><label>Сектор<input name="sector" placeholder="216"{disabled}></label><label>Место<input name="seat" placeholder="ряд / место"{disabled}></label></div>
 <label>С кем ходил<input name="companions" placeholder="Тёма / Ксюша / друзья"{disabled}></label>
 <label>Заметка<textarea name="note" placeholder="Что запомнилось, атмосфера, важный момент"{disabled}></textarea></label>
-<input type="hidden" name="season" value="{_esc(selected)}">
 <button class="save" type="submit"{disabled}>Сохранить матч</button>
 </form></article>
 <article class="hub-card panel"><div class="section-title"><h2>Билеты и фото</h2><span>следующий слой</span></div><div class="future-box"><b>Модель уже готова к артефактам.</b> Следующим маленьким этапом подключим загрузку билета и фотографий к конкретной записи — без превращения раздела в бесконечную фотогалерею.</div></article>
