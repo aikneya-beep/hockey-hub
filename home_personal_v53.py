@@ -97,7 +97,13 @@ def _personal_briefing_html() -> str:
 def render_home_v53() -> str:
     page = _previous_home()
     if not _HOME_AUTH.get():
-        return page.replace("v0.52.1", "v0.53", 1).replace("v0.51.3", "v0.53", 1).replace("v0.51", "v0.53", 1)
+        soup = BeautifulSoup(page, "html.parser")
+        for node in soup.find_all(string=True):
+            raw = str(node)
+            if "HOCKEY HUB" in raw and "ПЕРСОНАЛЬНЫЙ BRIEFING" in raw:
+                node.replace_with("HOCKEY HUB · v0.53.1 · ПЕРСОНАЛЬНЫЙ BRIEFING")
+                break
+        return str(soup)
 
     soup = BeautifulSoup(page, "html.parser")
     card = soup.select_one("article.personal-box")
@@ -161,6 +167,6 @@ async def home_personal_context(request, call_next):
 
 
 core.render_page = render_home_v53
-core.app.version = "0.53.0"
+core.app.version = "0.53.1"
 
 app = core.app
