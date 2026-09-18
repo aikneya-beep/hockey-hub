@@ -14,6 +14,7 @@ from development_store_v52 import DevelopmentStore
 
 
 STORE = DevelopmentStore()
+_BOOTSTRAP = STORE.load()  # ensure schema/seed at startup; load() fails soft and logs the reason
 _previous_renderer = personal_base.render_personal_page
 
 LEVEL_LABELS = {
