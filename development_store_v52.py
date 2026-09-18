@@ -90,7 +90,16 @@ class DevelopmentStore:
             with self._connect() as conn:
                 self._ensure(conn)
                 skills = conn.execute(
-                    "select skill_key,title,level,note,updated_at from personal_hockey_skills order by title"
+                    """select skill_key,title,level,note,updated_at
+                       from personal_hockey_skills
+                       order by case skill_key
+                         when 'skating' then 1
+                         when 'puck' then 2
+                         when 'shooting' then 3
+                         when 'maneuvers' then 4
+                         when 'game_sense' then 5
+                         when 'physical' then 6
+                         else 99 end"""
                 ).fetchall()
                 goals = conn.execute(
                     """select id,title,category,target_date,note,status,created_at,completed_at
