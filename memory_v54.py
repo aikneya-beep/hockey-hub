@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import html
+from urllib.parse import quote
 
 from bs4 import BeautifulSoup
 from fastapi import Form
@@ -22,6 +23,7 @@ _BOOTSTRAP = STORE.load()
 _previous_personal_renderer = personal_base.render_personal_page
 _previous_closet_renderer = closet_v48.render_closet
 _previous_environment_renderer = environment_v50.render_environment
+_previous_home_renderer = core.render_page
 
 
 def _esc(value) -> str:
@@ -146,7 +148,7 @@ def _memory_cards(matches: list[dict]) -> str:
           {f'<div class="memory-people"><span>С кем</span>{_esc(companion)}</div>' if companion else ''}
           {f'<p>{_esc(note)}</p>' if note else ''}
           {f'<div class="memory-media">{" · ".join(map(_esc, media))}</div>' if media else ''}
-          <form method="post" action="/my-hockey/memory/{item.get("id")}/delete" class="memory-delete"><button type="submit">Удалить запись</button></form>
+          <form method="post" action="/my-hockey/memory/{item.get("id")}/delete" class="memory-delete"><button type="submit" onclick="return confirm('Удалить эту запись из хроники?')">Удалить запись</button></form>
         </article>''')
     return "".join(cards)
 
@@ -236,9 +238,19 @@ def patch_environment() -> str:
     return _patch_tabs(_previous_environment_renderer(), "environment")
 
 
+def patch_home() -> str:
+    page = _previous_home_renderer()
+    soup = BeautifulSoup(page, "html.parser")
+    eyebrow = soup.select_one(".hero .eyebrow")
+    if eyebrow:
+        eyebrow.string = "Hockey Hub · v0.54 · персональный briefing"
+    return str(soup)
+
+
 personal_base.render_personal_page = patch_personal
 closet_v48.render_closet = patch_closet
 environment_v50.render_environment = patch_environment
+core.render_page = patch_home
 
 
 @core.app.get("/my-hockey/memory", response_class=HTMLResponse)
@@ -259,7 +271,6 @@ def add_memory(
     seat: str = Form(""),
     companions: str = Form(""),
     note: str = Form(""),
-    season: str = Form(""),
 ):
     try:
         resolved_date = _parse_date(match_date)
@@ -275,12 +286,13 @@ def add_memory(
             seat=seat,
             companions=companions,
             note=note,
-            season=season,
+            season="",
         )
-        resolved_season = season.strip() or season_for_date(resolved_date)
-        return RedirectResponse(f"/my-hockey/memory?season={html.escape(resolved_season, quote=True)}&saved=1", status_code=303)
+        resolved_season = season_for_date(resolved_date)
+        return RedirectResponse(f"/my-hockey/memory?season={quote(resolved_season)}&saved=1", status_code=303)
     except Exception as exc:
-        return RedirectResponse(f"/my-hockey/memory?error={html.escape(type(exc).__name__ + ': ' + str(exc)[:120], quote=True)}", status_code=303)
+        message = type(exc).__name__ + ": " + str(exc)[:120]
+        return RedirectResponse(f"/my-hockey/memory?error={quote(message)}", status_code=303)
 
 
 @core.app.post("/my-hockey/memory/{item_id}/delete")
