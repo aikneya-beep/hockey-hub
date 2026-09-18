@@ -277,7 +277,7 @@ class MemoryStore:
         width: int,
         height: int,
         original_name: str = "",
-        max_photos: int = 6,
+        max_photos: int = 20,
     ) -> int:
         with self._connect() as conn:
             self._ensure(conn)
@@ -301,6 +301,97 @@ class MemoryStore:
             ).fetchone()
             conn.commit()
         return int(row[0])
+
+    def create_match_with_photos(
+        self, *, match_date: date, home_team: str, away_team: str, competition: str = "",
+        home_score: int | None = None, away_score: int | None = None, arena: str = "",
+        sector: str = "", seat: str = "", companions: str = "", note: str = "",
+        photos: list[dict] | None = None, max_photos: int = 20,
+    ) -> int:
+        home, away = self._validate_match(home_team, away_team, home_score, away_score)
+        photos = photos or []
+        if len(photos) > max_photos:
+            raise ValueError(f"К одному воспоминанию можно добавить не больше {max_photos} фотографий")
+        with self._connect() as conn:
+            self._ensure(conn)
+            row = conn.execute(
+                """insert into personal_hockey_memories(
+                       match_date,season,competition,home_team,away_team,
+                       home_score,away_score,arena,sector,seat,companions,note
+                   ) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   returning id""",
+                (
+                    match_date, season_for_date(match_date), competition.strip() or None, home, away,
+                    home_score, away_score, arena.strip() or None, sector.strip() or None,
+                    seat.strip() or None, companions.strip() or None, note.strip() or None,
+                ),
+            ).fetchone()
+            memory_id = int(row[0])
+            for p in photos:
+                conn.execute(
+                    """insert into personal_hockey_memory_photos(
+                           memory_id,mime_type,image_data,width,height,original_name
+                       ) values(%s,%s,%s,%s,%s,%s)""",
+                    (
+                        memory_id, p["mime_type"], p["image_data"], int(p["width"]), int(p["height"]),
+                        (p.get("original_name") or "").strip() or None,
+                    ),
+                )
+            conn.commit()
+        return memory_id
+
+    def update_match_with_photos(
+        self, item_id: int, *, match_date: date, home_team: str, away_team: str,
+        competition: str = "", home_score: int | None = None, away_score: int | None = None,
+        arena: str = "", sector: str = "", seat: str = "", companions: str = "", note: str = "",
+        delete_photo_ids: list[int] | None = None, photos: list[dict] | None = None, max_photos: int = 20,
+    ) -> None:
+        home, away = self._validate_match(home_team, away_team, home_score, away_score)
+        delete_photo_ids = [int(x) for x in (delete_photo_ids or [])]
+        photos = photos or []
+        with self._connect() as conn:
+            self._ensure(conn)
+            existing_ids = [
+                int(r[0]) for r in conn.execute(
+                    "select id from personal_hockey_memory_photos where memory_id=%s",
+                    (int(item_id),),
+                ).fetchall()
+            ]
+            delete_photo_ids = [x for x in delete_photo_ids if x in existing_ids]
+            remaining = len(existing_ids) - len(delete_photo_ids)
+            if remaining + len(photos) > max_photos:
+                raise ValueError(f"После сохранения будет больше {max_photos} фотографий")
+
+            result = conn.execute(
+                """update personal_hockey_memories
+                   set match_date=%s,season=%s,competition=%s,home_team=%s,away_team=%s,
+                       home_score=%s,away_score=%s,arena=%s,sector=%s,seat=%s,
+                       companions=%s,note=%s,updated_at=now()
+                   where id=%s""",
+                (
+                    match_date, season_for_date(match_date), competition.strip() or None, home, away,
+                    home_score, away_score, arena.strip() or None, sector.strip() or None,
+                    seat.strip() or None, companions.strip() or None, note.strip() or None, int(item_id),
+                ),
+            )
+            if result.rowcount == 0:
+                raise ValueError("Воспоминание не найдено")
+            if delete_photo_ids:
+                conn.execute(
+                    "delete from personal_hockey_memory_photos where memory_id=%s and id = any(%s)",
+                    (int(item_id), delete_photo_ids),
+                )
+            for p in photos:
+                conn.execute(
+                    """insert into personal_hockey_memory_photos(
+                           memory_id,mime_type,image_data,width,height,original_name
+                       ) values(%s,%s,%s,%s,%s,%s)""",
+                    (
+                        int(item_id), p["mime_type"], p["image_data"], int(p["width"]), int(p["height"]),
+                        (p.get("original_name") or "").strip() or None,
+                    ),
+                )
+            conn.commit()
 
     def get_photo(self, photo_id: int) -> dict | None:
         with self._connect() as conn:
