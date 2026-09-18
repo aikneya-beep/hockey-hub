@@ -237,3 +237,16 @@ class PersonalHockeyStore:
             conn.commit()
         self._error = None
         return int(session_id)
+
+
+    def delete_session(self, session_id: int) -> None:
+        if not self.enabled:
+            raise RuntimeError("PostgreSQL is not connected to the web service")
+        with self._connect() as conn:
+            self._prepare(conn)
+            sid = int(session_id)
+            conn.execute("delete from personal_hockey_coach_notes where session_id=%s", (sid,))
+            conn.execute("delete from personal_hockey_tests where session_id=%s", (sid,))
+            conn.execute("delete from personal_hockey_sessions where id=%s", (sid,))
+            conn.commit()
+        self._error = None
