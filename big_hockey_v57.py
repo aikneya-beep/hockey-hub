@@ -13,7 +13,7 @@ from design_system_v46 import COMMON_CSS, topbar
 from playoff_monitor import build_snapshot
 
 
-VERSION = "0.57"
+VERSION = "0.57.1"
 personal_v56.VERSION = VERSION
 
 
@@ -321,7 +321,8 @@ body{{background:radial-gradient(circle at 18% 0%,rgba(239,54,84,.075),transpare
 .standing-card{{padding-bottom:14px}}.standings-title{{display:flex;justify-content:space-between;gap:10px;padding:0 15px 9px;color:#738398;font-size:8px}}.standings-title b{{color:#aeb9c6;font-size:9px}}.mini-table-wrap{{overflow:auto;margin:0 14px;border:1px solid #222e3b;border-radius:10px}}.mini-table-wrap table{{width:100%;border-collapse:collapse;min-width:350px}}.mini-table-wrap th,.mini-table-wrap td{{padding:8px 7px;border-bottom:1px solid #202b37;text-align:center;font-size:8px;white-space:nowrap}}.mini-table-wrap th{{color:#68788c;font-weight:600}}.mini-table-wrap th:nth-child(2),.mini-table-wrap td:nth-child(2){{text-align:left}}.mini-table-wrap tr.me{{background:#172334;box-shadow:inset 2px 0 #5c8ac5}}.mini-table-wrap tr.zone-direct:not(.me){{background:rgba(67,132,83,.04)}}.mini-table-wrap tr.zone-playin:not(.me){{background:rgba(170,132,52,.05)}}.source-link{{display:block;text-align:right;margin:8px 15px 0;color:#647489;font-size:7px;text-decoration:none}}.empty-block{{padding:16px;color:#718095;font-size:9px}}.empty-block a{{display:block;margin-top:7px}}
 .season-card{{padding-bottom:14px}}.season-card dl{{margin:0 15px}}.season-card dl>div{{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid #202b37}}.season-card dt{{color:#68778a;font-size:8px}}.season-card dd{{margin:0;color:#bec7d2;font-size:9px;text-align:right}}
 .big-footer{{display:flex;justify-content:space-between;margin-top:22px;padding-top:15px;border-top:1px solid #1f2935;color:#58677b;font-size:8px;text-transform:uppercase;letter-spacing:.06em}}
-body.hide-scores .score-value{{filter:blur(7px);user-select:none}}
+body.hide-scores .score-value{{filter:none!important;position:relative;display:inline-block;width:3.4em;overflow:hidden;white-space:nowrap;color:transparent!important;text-shadow:none!important;user-select:none}}
+body.hide-scores .score-value:after{{content:"—:—";position:absolute;inset:0;color:#cbd3dd;text-align:center}}
 @media(max-width:920px){{.system-grid{{grid-template-columns:1fr 1fr}}.detail-grid{{grid-template-columns:1fr}}}}
 @media(max-width:760px){{.hub-topbar{{grid-template-columns:auto auto}}.hub-nav{{grid-column:1/-1;order:3}}.spoiler-btn{{justify-self:end}}.big-hero{{grid-template-columns:1fr}}.big-hero-side{{text-align:left}}.team-detail-head{{align-items:flex-start;flex-direction:column}}}}
 @media(max-width:560px){{.system-grid{{grid-template-columns:1fr}}.recent-row{{grid-template-columns:38px 26px 1fr auto}}.recent-row>a{{display:none}}.stage-block{{align-items:flex-start;flex-direction:column}}}}
@@ -362,7 +363,7 @@ applySpoiler();
 
 # The existing /big-hockey route resolves this module global dynamically.
 home_v44.render_big_hockey_v44 = render_big_hockey_v57
-core.app.version = "0.57.0"
+core.app.version = "0.57.1"
 app = core.app
 
 
