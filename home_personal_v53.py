@@ -105,7 +105,7 @@ def render_home_v53() -> str:
         title = card.select_one(".world-title h3")
         link = card.select_one(".world-title a")
         if title:
-            title.string = "Мой хоккей · сейчас"
+            title.string = "Мой хоккей"
         if link:
             link.string = "открыть →"
             link["href"] = "/my-hockey"
@@ -131,12 +131,12 @@ def render_home_v53() -> str:
 @media(max-width:560px){.home-personal-grid{grid-template-columns:1fr}}
 """)
 
-    text = str(soup)
-    for version in ("v0.52.1", "v0.51.3", "v0.51"):
-        if version in text:
-            text = text.replace(version, "v0.53", 1)
+    for node in soup.find_all(string=True):
+        raw = str(node)
+        if "HOCKEY HUB" in raw and "ПЕРСОНАЛЬНЫЙ BRIEFING" in raw:
+            node.replace_with("HOCKEY HUB · v0.53.1 · ПЕРСОНАЛЬНЫЙ BRIEFING")
             break
-    return text
+    return str(soup)
 
 
 @core.app.middleware("http")
