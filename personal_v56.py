@@ -24,7 +24,7 @@ from memory_store_v54 import MemoryStore, season_for_date
 from design_system_v46 import COMMON_CSS, topbar
 
 
-VERSION = "0.56"
+VERSION = "0.56.1"
 PERSONAL = personal_base.STORE
 CLOSET = closet_v48.STORE
 DEV = DevelopmentStore()
@@ -840,7 +840,7 @@ def memory_photo(photo_id:int):
     return Response(status_code=404) if not photo else Response(content=photo["image_data"],media_type=photo["mime_type"],headers={"Cache-Control":"private, max-age=86400"})
 
 
-core.app.version="0.56.0"
+core.app.version="0.56.1"
 app=core.app
 
 
