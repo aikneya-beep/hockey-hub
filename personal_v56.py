@@ -842,3 +842,30 @@ def memory_photo(photo_id:int):
 
 core.app.version="0.56.0"
 app=core.app
+
+
+def _startup_smoke_v56() -> None:
+    checks = (
+        ("player", lambda: render_personal_v56()),
+        ("environment", render_environment_v56),
+        ("closet", lambda: render_closet_v56()),
+        ("memory", lambda: render_memory_v56()),
+    )
+    for name, fn in checks:
+        page = fn()
+        if not isinstance(page, str) or "<html" not in page.lower():
+            raise RuntimeError(f"v0.56 smoke render failed: {name}")
+        print(f"[v56-smoke] {name}: OK chars={len(page)}", flush=True)
+
+    paths = {getattr(route, "path", None) for route in core.app.routes}
+    required = {
+        "/", "/big-hockey", "/my-hockey", "/my-hockey/environment",
+        "/my-hockey/closet", "/my-hockey/memory", "/login",
+    }
+    missing = sorted(required - paths)
+    if missing:
+        raise RuntimeError(f"v0.56 missing routes: {missing}")
+    print(f"[v56-smoke] routes: OK count={len(required)}", flush=True)
+
+
+_startup_smoke_v56()
