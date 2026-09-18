@@ -45,11 +45,11 @@ def _bump_page(page: str, selector: str | None = None) -> str:
         if node:
             raw = node.get_text(" ", strip=True)
             prefix = raw.split("·")[0].strip() if "·" in raw else raw
-            node.string = f"{prefix} · v0.55"
+            node.string = f"{prefix} · v0.55.1"
     text = str(soup)
     for old in ("v0.54.1", "v0.54", "v0.53.2", "v0.53.1", "v0.53"):
         if old in text:
-            text = text.replace(old, "v0.55", 1)
+            text = text.replace(old, "v0.55.1", 1)
             break
     return text
 
@@ -604,7 +604,7 @@ def render_closet_v55(saved: str | None = None, error: str | None = None) -> str
 """)
     eyebrow = soup.select_one(".closet-hero .hub-eyebrow")
     if eyebrow:
-        eyebrow.string = "Мой хоккей · v0.55"
+        eyebrow.string = "Мой хоккей · v0.55.1"
     return str(soup)
 
 
