@@ -327,7 +327,7 @@ body.hide-scores .score-value{{filter:blur(7px);user-select:none}}
 @media(max-width:560px){{.system-grid{{grid-template-columns:1fr}}.recent-row{{grid-template-columns:38px 26px 1fr auto}}.recent-row>a{{display:none}}.stage-block{{align-items:flex-start;flex-direction:column}}}}
 </style></head><body><main class="hub-shell">
 {topbar("big").replace("</header>", '<button class="spoiler-btn" id="spoilerToggle" type="button">◉ Не спойлерить</button></header>')}
-<section class="big-hero"><div><div class="hub-eyebrow">ВНЕШНИЙ ХОККЕЙНЫЙ МИР</div><h1>Большой хоккей</h1><p>СКА-система целиком: четыре команды, четыре лиги, один текущий контекст.</p></div><div class="big-hero-side"><b>СКА / ВМФ / 1946 / АКАДЕМИЯ</b>матчи · таблицы · форма · постсезон</div></section>
+<section class="big-hero"><div><div class="hub-eyebrow">ВНЕШНИЙ ХОККЕЙНЫЙ МИР</div><h1>Большой хоккей</h1><p>СКА-система целиком: четыре команды, три лиги, один текущий контекст.</p></div><div class="big-hero-side"><b>СКА / ВМФ / 1946 / АКАДЕМИЯ</b>матчи · таблицы · форма · постсезон</div></section>
 <div class="big-tabs"><span class="active">СКА-система</span><span class="soon">НХЛ · следующий этап</span><span class="soon">Международный</span><span class="soon">Новости</span><span class="soon">История</span></div>
 <section class="system-grid">{tiles}</section>
 {panels}
@@ -364,3 +364,17 @@ applySpoiler();
 home_v44.render_big_hockey_v44 = render_big_hockey_v57
 core.app.version = "0.57.0"
 app = core.app
+
+
+def _startup_smoke_v57() -> None:
+    page = render_big_hockey_v57()
+    required = ("СКА", "СКА-ВМФ", "СКА-1946", "Академия СКА", "Турнирное положение")
+    missing = [label for label in required if label not in page]
+    if missing:
+        raise RuntimeError(f"v0.57 big hockey smoke missing: {missing}")
+    if "<html" not in page.lower():
+        raise RuntimeError("v0.57 big hockey smoke: invalid html")
+    print(f"[v57-smoke] big-hockey: OK chars={len(page)}", flush=True)
+
+
+_startup_smoke_v57()
