@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from io import BytesIO
 import html
+from urllib.parse import quote
 
 from bs4 import BeautifulSoup
 from fastapi import File, Form, UploadFile
@@ -193,18 +194,19 @@ def render_memory_v55(season: str | None = None, saved: int = 0, error: str | No
 
     eyebrow = soup.select_one(".memory-hero .hub-eyebrow")
     if eyebrow:
-        eyebrow.string = "Мой хоккей · v0.55"
+        eyebrow.string = "Мой хоккей · v0.55.1"
 
     style = soup.find("style")
     if style:
         style.append(r"""
 /* v0.55: editable memories and real photo attachments */
 .memory-photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:16px}
-.memory-photo{position:relative;margin:0;border-radius:11px;overflow:hidden;background:#080c11;aspect-ratio:4/3;border:1px solid #26323e}
-.memory-photo img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .18s ease}
-.memory-photo:hover img{transform:scale(1.025)}
-.memory-photo form{position:absolute;right:6px;top:6px;padding:0}
-.memory-photo button{width:24px;height:24px;padding:0;border:1px solid rgba(255,255,255,.16);border-radius:50%;background:rgba(5,8,12,.78);color:#d4dce5;cursor:pointer}
+.memory-photo{position:relative;margin:0;border-radius:11px;overflow:hidden;background:#05080c;aspect-ratio:4/3;border:1px solid #26323e}
+.memory-photo img{display:block;width:100%;height:100%;object-fit:contain}
+.memory-photo form{position:absolute;right:6px;top:6px;padding:0;opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease;pointer-events:none}
+.memory-photo:hover form,.memory-photo:focus-within form{opacity:1;transform:none;pointer-events:auto}
+.memory-photo button{width:24px;height:24px;padding:0;border:1px solid rgba(255,255,255,.18);border-radius:50%;background:rgba(5,8,12,.88);color:#d4dce5;cursor:pointer}
+@media(hover:none){.memory-photo:focus-within form{opacity:1;pointer-events:auto}}
 .memory-actions{display:flex;gap:14px;align-items:flex-start;margin-top:13px;flex-wrap:wrap}
 .photo-add,.record-edit{font-size:8px;color:#6d8094}.photo-add summary,.record-edit summary{cursor:pointer;color:#7895b0}
 .photo-add summary span{color:#526577;margin-left:4px}.photo-add form,.record-edit form{display:grid;gap:8px;margin-top:10px;padding:12px;border:1px solid #283542;border-radius:11px;background:#080d12;min-width:min(520px,70vw)}
@@ -279,28 +281,60 @@ def edit_memory(
 async def add_memory_photos(
     item_id: int,
     season: str = Form(""),
-    photos: list[UploadFile] = File(...),
+    photos: list[UploadFile] | None = File(None),
 ):
-    all_data = memory_base.STORE.load()
-    match = next((x for x in all_data.get("matches", []) if int(x.get("id")) == int(item_id)), None)
-    if not match:
-        raise ValueError("Воспоминание не найдено")
-    existing = len(match.get("photos") or [])
-    if existing + len(photos) > 6:
-        raise ValueError("К одному воспоминанию можно добавить не больше 6 фотографий")
-    for upload in photos:
-        raw = await upload.read()
-        payload, width, height = _process_photo(raw)
-        memory_base.STORE.add_photo(
-            item_id,
-            mime_type="image/webp",
-            image_data=payload,
-            width=width,
-            height=height,
-            original_name=upload.filename or "",
+    resolved = season or ""
+    try:
+        all_data = memory_base.STORE.load()
+        match = next((x for x in all_data.get("matches", []) if int(x.get("id")) == int(item_id)), None)
+        if not match:
+            raise ValueError("Воспоминание не найдено")
+
+        resolved = resolved or match.get("season") or ""
+        selected = [p for p in (photos or []) if p and (p.filename or "").strip()]
+        if not selected:
+            raise ValueError("Выбери хотя бы одну фотографию")
+
+        existing = len(match.get("photos") or [])
+        free_slots = max(0, 6 - existing)
+        if len(selected) > free_slots:
+            if free_slots == 0:
+                raise ValueError("Лимит заполнен: к воспоминанию уже добавлено 6 фотографий")
+            raise ValueError(f"Можно добавить ещё только {free_slots} фото")
+
+        allowed = {"image/jpeg", "image/png", "image/webp"}
+        processed: list[tuple[UploadFile, bytes, int, int]] = []
+        for upload in selected:
+            content_type = (upload.content_type or "").lower()
+            if content_type not in allowed:
+                raise ValueError(f"Файл «{upload.filename or 'без имени'}» имеет неподдерживаемый формат")
+            raw = await upload.read()
+            if not raw:
+                raise ValueError(f"Файл «{upload.filename or 'без имени'}» пустой")
+            try:
+                payload, width, height = _process_photo(raw)
+            except ValueError:
+                raise
+            except Exception:
+                raise ValueError(f"Не удалось прочитать изображение «{upload.filename or 'без имени'}»")
+            processed.append((upload, payload, width, height))
+
+        for upload, payload, width, height in processed:
+            memory_base.STORE.add_photo(
+                item_id,
+                mime_type="image/webp",
+                image_data=payload,
+                width=width,
+                height=height,
+                original_name=upload.filename or "",
+            )
+        return RedirectResponse(f"/my-hockey/memory?season={quote(resolved)}#memory-{item_id}", status_code=303)
+    except Exception as exc:
+        message = str(exc) or type(exc).__name__
+        return RedirectResponse(
+            f"/my-hockey/memory?season={quote(resolved)}&error={quote(message[:180])}#memory-{item_id}",
+            status_code=303,
         )
-    resolved = season or match.get("season") or ""
-    return RedirectResponse(f"/my-hockey/memory?season={resolved}#memory-{item_id}", status_code=303)
 
 
 @core.app.get("/my-hockey/memory/photo/{photo_id}")
@@ -416,7 +450,7 @@ def render_personal_v55(saved: bool = False, error: str | None = None) -> str:
 """)
     eyebrow = soup.select_one(".mine-hero .hub-eyebrow")
     if eyebrow:
-        eyebrow.string = "Личный хоккей · v0.55"
+        eyebrow.string = "Личный хоккей · v0.55.1"
     return str(soup)
 
 
@@ -616,7 +650,7 @@ def render_environment_v55() -> str:
     soup = BeautifulSoup(page, "html.parser")
     node = soup.select_one(".env-hero .hub-eyebrow")
     if node:
-        node.string = "Мой хоккей · v0.55"
+        node.string = "Мой хоккей · v0.55.1"
     return str(soup)
 
 
@@ -630,10 +664,10 @@ def render_home_v55() -> str:
     soup = BeautifulSoup(page, "html.parser")
     node = soup.select_one(".hero .eyebrow")
     if node:
-        node.string = "Hockey Hub · v0.55 · персональный briefing"
+        node.string = "Hockey Hub · v0.55.1 · персональный briefing"
     return str(soup)
 
 
 core.render_page = render_home_v55
-core.app.version = "0.55.0"
+core.app.version = "0.55.1"
 app = core.app
