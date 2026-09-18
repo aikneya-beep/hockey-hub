@@ -13,6 +13,7 @@ import home_v44
 
 
 VERSION = "0.58"
+ska.personal_v56.VERSION = VERSION
 MSK = ZoneInfo("Europe/Moscow")
 
 TEAM_NAMES = {
