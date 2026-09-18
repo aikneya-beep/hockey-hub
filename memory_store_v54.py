@@ -58,7 +58,35 @@ class MemoryStore:
             """create index if not exists personal_hockey_memories_season_date_idx
                on personal_hockey_memories(season, match_date desc, id desc)"""
         )
+        conn.execute(
+            """create table if not exists personal_hockey_memory_photos (
+                id bigserial primary key,
+                memory_id bigint not null references personal_hockey_memories(id) on delete cascade,
+                mime_type text not null,
+                image_data bytea not null,
+                width integer,
+                height integer,
+                original_name text,
+                created_at timestamptz not null default now()
+            )"""
+        )
+        conn.execute(
+            """create index if not exists personal_hockey_memory_photos_memory_idx
+               on personal_hockey_memory_photos(memory_id, id)"""
+        )
         self._schema_ready = True
+
+    @staticmethod
+    def _validate_match(home_team: str, away_team: str, home_score: int | None, away_score: int | None) -> tuple[str, str]:
+        home = home_team.strip()
+        away = away_team.strip()
+        if not home or not away:
+            raise ValueError("Обе команды обязательны")
+        if (home_score is None) != (away_score is None):
+            raise ValueError("Счёт нужно указать целиком")
+        if home_score is not None and (home_score < 0 or away_score is None or away_score < 0):
+            raise ValueError("Некорректный счёт")
+        return home, away
 
     def load(self, season: str | None = None) -> dict:
         if not self.enabled:
@@ -92,7 +120,29 @@ class MemoryStore:
                            from personal_hockey_memories
                            order by match_date desc,id desc"""
                     ).fetchall()
+
+                ids = [int(r[0]) for r in rows]
+                photos_by_memory: dict[int, list[dict]] = {item_id: [] for item_id in ids}
+                if ids:
+                    photo_rows = conn.execute(
+                        """select id,memory_id,width,height,original_name,created_at
+                           from personal_hockey_memory_photos
+                           where memory_id = any(%s)
+                           order by memory_id,id""",
+                        (ids,),
+                    ).fetchall()
+                    for p in photo_rows:
+                        photos_by_memory.setdefault(int(p[1]), []).append(
+                            {
+                                "id": int(p[0]),
+                                "width": p[2],
+                                "height": p[3],
+                                "original_name": p[4] or "",
+                                "created_at": p[5].isoformat() if p[5] else None,
+                            }
+                        )
                 conn.commit()
+
             return {
                 "matches": [
                     {
@@ -111,6 +161,7 @@ class MemoryStore:
                         "note": r[12] or "",
                         "ticket_ref": r[13] or "",
                         "photo_refs": r[14] or "",
+                        "photos": photos_by_memory.get(int(r[0]), []),
                         "created_at": r[15].isoformat() if r[15] else None,
                     }
                     for r in rows
@@ -141,12 +192,7 @@ class MemoryStore:
         ticket_ref: str = "",
         photo_refs: str = "",
     ) -> int:
-        home_team = home_team.strip()
-        away_team = away_team.strip()
-        if not home_team or not away_team:
-            raise ValueError("Обе команды обязательны")
-        if (home_score is None) != (away_score is None):
-            raise ValueError("Счёт нужно указать целиком")
+        home, away = self._validate_match(home_team, away_team, home_score, away_score)
         resolved_season = season.strip() or season_for_date(match_date)
         with self._connect() as conn:
             self._ensure(conn)
@@ -161,8 +207,8 @@ class MemoryStore:
                     match_date,
                     resolved_season,
                     competition.strip() or None,
-                    home_team,
-                    away_team,
+                    home,
+                    away,
                     home_score,
                     away_score,
                     arena.strip() or None,
@@ -176,6 +222,112 @@ class MemoryStore:
             ).fetchone()
             conn.commit()
         return int(row[0])
+
+    def update_match(
+        self,
+        item_id: int,
+        *,
+        match_date: date,
+        home_team: str,
+        away_team: str,
+        competition: str = "",
+        home_score: int | None = None,
+        away_score: int | None = None,
+        arena: str = "",
+        sector: str = "",
+        seat: str = "",
+        companions: str = "",
+        note: str = "",
+    ) -> None:
+        home, away = self._validate_match(home_team, away_team, home_score, away_score)
+        with self._connect() as conn:
+            self._ensure(conn)
+            result = conn.execute(
+                """update personal_hockey_memories
+                   set match_date=%s,season=%s,competition=%s,home_team=%s,away_team=%s,
+                       home_score=%s,away_score=%s,arena=%s,sector=%s,seat=%s,
+                       companions=%s,note=%s,updated_at=now()
+                   where id=%s""",
+                (
+                    match_date,
+                    season_for_date(match_date),
+                    competition.strip() or None,
+                    home,
+                    away,
+                    home_score,
+                    away_score,
+                    arena.strip() or None,
+                    sector.strip() or None,
+                    seat.strip() or None,
+                    companions.strip() or None,
+                    note.strip() or None,
+                    int(item_id),
+                ),
+            )
+            if result.rowcount == 0:
+                raise ValueError("Воспоминание не найдено")
+            conn.commit()
+
+    def add_photo(
+        self,
+        memory_id: int,
+        *,
+        mime_type: str,
+        image_data: bytes,
+        width: int,
+        height: int,
+        original_name: str = "",
+        max_photos: int = 6,
+    ) -> int:
+        with self._connect() as conn:
+            self._ensure(conn)
+            exists = conn.execute(
+                "select 1 from personal_hockey_memories where id=%s",
+                (int(memory_id),),
+            ).fetchone()
+            if not exists:
+                raise ValueError("Воспоминание не найдено")
+            count = conn.execute(
+                "select count(*) from personal_hockey_memory_photos where memory_id=%s",
+                (int(memory_id),),
+            ).fetchone()[0]
+            if int(count) >= max_photos:
+                raise ValueError(f"К одному воспоминанию можно добавить не больше {max_photos} фотографий")
+            row = conn.execute(
+                """insert into personal_hockey_memory_photos(
+                       memory_id,mime_type,image_data,width,height,original_name
+                   ) values(%s,%s,%s,%s,%s,%s) returning id""",
+                (int(memory_id), mime_type, image_data, int(width), int(height), original_name.strip() or None),
+            ).fetchone()
+            conn.commit()
+        return int(row[0])
+
+    def get_photo(self, photo_id: int) -> dict | None:
+        with self._connect() as conn:
+            self._ensure(conn)
+            row = conn.execute(
+                """select id,memory_id,mime_type,image_data,width,height,original_name,created_at
+                   from personal_hockey_memory_photos where id=%s""",
+                (int(photo_id),),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row[0]),
+            "memory_id": int(row[1]),
+            "mime_type": row[2],
+            "image_data": bytes(row[3]),
+            "width": row[4],
+            "height": row[5],
+            "original_name": row[6] or "",
+            "created_at": row[7].isoformat() if row[7] else None,
+        }
+
+    def delete_photo(self, photo_id: int) -> None:
+        with self._connect() as conn:
+            self._ensure(conn)
+            conn.execute("delete from personal_hockey_memory_photos where id=%s", (int(photo_id),))
+            conn.commit()
 
     def delete_match(self, item_id: int) -> None:
         with self._connect() as conn:
