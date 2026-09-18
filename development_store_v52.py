@@ -190,6 +190,38 @@ class DevelopmentStore:
             conn.commit()
         return int(row[0])
 
+    def update_goal(self, item_id: int, title: str, category: str, target_date: date | None, note: str) -> None:
+        title = title.strip()
+        if not title:
+            raise ValueError("goal title is empty")
+        with self._connect() as conn:
+            self._ensure(conn)
+            result = conn.execute(
+                """update personal_hockey_goals
+                   set title=%s,category=%s,target_date=%s,note=%s
+                   where id=%s""",
+                (title, category.strip() or None, target_date, note.strip() or None, int(item_id)),
+            )
+            if result.rowcount == 0:
+                raise ValueError("goal not found")
+            conn.commit()
+
+    def update_homework(self, item_id: int, text: str, source: str, due_date: date | None) -> None:
+        text = text.strip()
+        if not text:
+            raise ValueError("homework is empty")
+        with self._connect() as conn:
+            self._ensure(conn)
+            result = conn.execute(
+                """update personal_hockey_homework
+                   set text=%s,source=%s,due_date=%s
+                   where id=%s""",
+                (text, source.strip() or None, due_date, int(item_id)),
+            )
+            if result.rowcount == 0:
+                raise ValueError("homework not found")
+            conn.commit()
+
     def set_goal_done(self, item_id: int, done: bool) -> None:
         with self._connect() as conn:
             self._ensure(conn)
