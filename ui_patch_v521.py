@@ -78,7 +78,10 @@ def render_personal_v521(saved: bool = False, error: str | None = None) -> str:
 """)
 
     text = str(soup)
-    text = text.replace("v0.52.0", "v0.52.1").replace("v0.52", "v0.52.1", 1)
+    if "v0.52.0" in text:
+        text = text.replace("v0.52.0", "v0.52.1", 1)
+    else:
+        text = text.replace("v0.52", "v0.52.1", 1)
     return text
 
 
