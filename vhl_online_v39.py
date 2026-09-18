@@ -84,7 +84,21 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
             continue
 
         opponent = game.away_team if game.home_team == wanted_name else game.home_team
-        chosen = next((c for c in candidates if _norm(opponent) in _norm(c[1])), candidates[0])
+        chosen = next((c for c in candidates if _norm(opponent) in _norm(c[1])), None)
+        if chosen is None:
+            # Never attach an arbitrary VМФ online card to today's match.
+            # The online root can contain stale/adjacent cards and abbreviated
+            # team names. In the live window the club schedule's running score
+            # is useful, but without a confident opponent match it is not safe
+            # to import completion state or a foreign match URL.
+            if _near_now(game, now):
+                game.status = "live"
+                print(
+                    f"[live] VHL {wanted_name}: live-window fallback "
+                    f"{game.home_team} {game.home_score}:{game.away_score} {game.away_team}",
+                    flush=True,
+                )
+            continue
         href, context = chosen
         score_match = re.search(r"(?<!\d)(\d{1,2})\s*:\s*(\d{1,2})(?!\d)", context)
         if score_match:
