@@ -12,6 +12,7 @@ import app_v05 as core
 HEADERS = {"User-Agent": "Mozilla/5.0 HockeyHub", "Accept-Language": "ru-RU,ru;q=0.9"}
 VHL_ONLINE_ROOT = "https://online.vhlru.ru/online/"
 VHL_TEAM_CALENDAR = "https://www.vhlru.ru/calendar/1430/0/15529/"
+LIVE_SOFT_LIMIT = timedelta(hours=3, minutes=30)
 
 
 def _norm(value: str) -> str:
@@ -19,7 +20,28 @@ def _norm(value: str) -> str:
 
 
 def _near_now(game: core.Game, now: datetime) -> bool:
-    return game.start_at - timedelta(minutes=20) <= now <= game.start_at + timedelta(hours=5)
+    return game.start_at - timedelta(minutes=20) <= now <= game.start_at + LIVE_SOFT_LIMIT
+
+
+def _apply_time_fallback(game: core.Game, now: datetime) -> str | None:
+    """Keep a match live only for a realistic hockey window.
+
+    The team calendar may expose a numeric running score without a final marker.
+    Inside the soft window that score is not trusted as final. After 3h30, a
+    numeric score is accepted as finished so a stale online center cannot leave
+    LIVE on screen for hours.
+    """
+    if _near_now(game, now):
+        game.status = "live"
+        return "live"
+    if (
+        now > game.start_at + LIVE_SOFT_LIMIT
+        and game.home_score is not None
+        and game.away_score is not None
+    ):
+        game.status = "finished"
+        return "finished"
+    return None
 
 
 def _card_context(anchor) -> str:
@@ -58,8 +80,8 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
     except Exception as exc:
         print(f"[live] VHL {wanted_name}: online center unavailable: {type(exc).__name__}: {exc}", flush=True)
         for game in games:
-            if game.start_at.date() == now.date() and _near_now(game, now):
-                game.status = "live"
+            if game.start_at.date() == now.date():
+                _apply_time_fallback(game, now)
         return 0
 
     candidates: list[tuple[str, str]] = []
@@ -79,8 +101,13 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
             # the legacy schedule parser labels any numeric score as finished.
             # Within the live window that is unsafe: keep the match live until
             # the official online center explicitly reports completion.
-            if _near_now(game, now):
-                game.status = "live"
+            state = _apply_time_fallback(game, now)
+            if state == "finished":
+                print(
+                    f"[live] VHL {wanted_name}: soft-limit finish "
+                    f"{game.home_team} {game.home_score}:{game.away_score} {game.away_team}",
+                    flush=True,
+                )
             continue
 
         opponent = game.away_team if game.home_team == wanted_name else game.home_team
@@ -91,10 +118,10 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
             # team names. In the live window the club schedule's running score
             # is useful, but without a confident opponent match it is not safe
             # to import completion state or a foreign match URL.
-            if _near_now(game, now):
-                game.status = "live"
+            state = _apply_time_fallback(game, now)
+            if state:
                 print(
-                    f"[live] VHL {wanted_name}: live-window fallback "
+                    f"[live] VHL {wanted_name}: {state}-window fallback "
                     f"{game.home_team} {game.home_score}:{game.away_score} {game.away_team}",
                     flush=True,
                 )
@@ -106,7 +133,12 @@ def overlay_vhl_live(games: list[core.Game], wanted_name: str) -> int:
             game.away_score = int(score_match.group(2))
         low = _norm(context)
         explicit_finished = any(x in low for x in ("матч завершен", "матч завершён", "окончен"))
-        game.status = "finished" if explicit_finished else "live"
+        if explicit_finished:
+            game.status = "finished"
+        elif now > game.start_at + LIVE_SOFT_LIMIT and game.home_score is not None and game.away_score is not None:
+            game.status = "finished"
+        else:
+            game.status = "live"
         game.source_url = href
         updated += 1
         print(
