@@ -72,6 +72,10 @@ class DevelopmentStore:
             )""",
             """create index if not exists personal_hockey_homework_status_idx
                on personal_hockey_homework(status, due_date nulls last)""",
+            """alter table personal_hockey_homework
+               add column if not exists session_id bigint references personal_hockey_sessions(id) on delete set null""",
+            """create unique index if not exists personal_hockey_homework_session_idx
+               on personal_hockey_homework(session_id) where session_id is not null""",
         )
         for statement in statements:
             conn.execute(statement)
@@ -108,7 +112,7 @@ class DevelopmentStore:
                                 target_date nulls last, created_at desc"""
                 ).fetchall()
                 homework = conn.execute(
-                    """select id,text,source,due_date,status,created_at,completed_at
+                    """select id,text,source,due_date,status,created_at,completed_at,session_id
                        from personal_hockey_homework
                        order by case when status='active' then 0 else 1 end,
                                 due_date nulls last, created_at desc"""
@@ -138,6 +142,7 @@ class DevelopmentStore:
                         "status": r[4],
                         "created_at": r[5].isoformat() if r[5] else None,
                         "completed_at": r[6].isoformat() if r[6] else None,
+                        "session_id": r[7],
                     } for r in homework
                 ],
                 "error": None,
@@ -242,4 +247,34 @@ class DevelopmentStore:
                    where id=%s""",
                 ("done" if done else "active", done, item_id),
             )
+            conn.commit()
+
+
+    def sync_session_homework(self, session_id: int, text: str, source: str, due_date: date | None = None) -> None:
+        with self._connect() as conn:
+            self._ensure(conn)
+            clean = (text or "").strip()
+            if not clean:
+                conn.execute("delete from personal_hockey_homework where session_id=%s", (int(session_id),))
+            else:
+                conn.execute(
+                    """insert into personal_hockey_homework(text,source,due_date,status,session_id)
+                       values(%s,%s,%s,'active',%s)
+                       on conflict(session_id) where session_id is not null
+                       do update set text=excluded.text,source=excluded.source,due_date=excluded.due_date,
+                                     status='active',completed_at=null""",
+                    (clean, (source or "").strip() or None, due_date, int(session_id)),
+                )
+            conn.commit()
+
+    def delete_goal(self, item_id: int) -> None:
+        with self._connect() as conn:
+            self._ensure(conn)
+            conn.execute("delete from personal_hockey_goals where id=%s", (int(item_id),))
+            conn.commit()
+
+    def delete_homework(self, item_id: int) -> None:
+        with self._connect() as conn:
+            self._ensure(conn)
+            conn.execute("delete from personal_hockey_homework where id=%s", (int(item_id),))
             conn.commit()
