@@ -257,3 +257,18 @@ class ClosetStore:
             conn.commit()
         self._error = None
         return int(item_id)
+
+
+    def delete_item(self, item_id: int) -> None:
+        with self._connect() as conn:
+            self._prepare(conn)
+            conn.execute("delete from personal_hockey_gear where id=%s", (int(item_id),))
+            conn.commit()
+        self._error = None
+
+    def delete_wishlist(self, item_id: int) -> None:
+        with self._connect() as conn:
+            self._prepare(conn)
+            conn.execute("delete from personal_hockey_wishlist where id=%s", (int(item_id),))
+            conn.commit()
+        self._error = None
